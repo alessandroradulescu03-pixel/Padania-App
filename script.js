@@ -11,6 +11,12 @@
    (proprietà CHIAVE_STAFF): se la cambi, cambiala in tutti e due i posti. */
 const PW_HASH = '3fc13c35bdb2d6f9146fcd93304ba3c2143d5d017268e17a939f0d315728c8a2';
 
+/* ─── PASSWORD ADMIN ───
+   Serve solo per le impostazioni delicate (indirizzo script, azzera check-in):
+   lo staff usa l'app normalmente ma non può rompere il collegamento.
+   Anche qui c'è solo l'impronta SHA-256, non la password in chiaro. */
+const ADMIN_HASH = 'c906338955e9bd5977af6f0888dc965dd856300b59ac77883ec6fe0d25600adb';
+
 /* Script Google delle iscrizioni (lo stesso di assets/js/config.js del sito) */
 const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbweHwQuH_P4cblhQDbDnI6Ri86qSEqwWyMSCgTRZJ3yFjr5KV_0Q8NpHRUUOVoqZTrjug/exec';
 
@@ -211,6 +217,22 @@ $('#authForm').addEventListener('submit', async e => {
   }
 });
 $('#pwToggle').addEventListener('click', () => { const i = $('#authInput'); i.type = i.type === 'password' ? 'text' : 'password'; i.focus(); });
+
+/* chiede la password admin (una volta per sessione) */
+async function requireAdmin() {
+  try { if (sessionStorage.getItem('ptAdmin') === '1') return true; } catch {}
+  const res = await modal({
+    title: '🔒 Solo amministratore', text: 'Questa impostazione può essere modificata solo dall\'amministratore.',
+    body: `<label class="field"><input id="adminPw" type="password" placeholder="Password admin" autocomplete="off"></label>`,
+    ok: 'Sblocca', focus: '#adminPw'
+  });
+  if (!res.ok) return false;
+  let ok = false;
+  try { ok = (await sha256($('#adminPw').value)) === ADMIN_HASH; } catch {}
+  if (!ok) { feedback('bad'); toast('Password admin errata', 'err'); return false; }
+  try { sessionStorage.setItem('ptAdmin', '1'); } catch {}
+  return true;
+}
 
 /* nome di chi usa il telefono: firma ogni ingresso/uscita */
 async function askOperator(force) {
@@ -953,6 +975,7 @@ const ACTIONS = {
   },
   restore: () => $('#restoreInput').click(),
   async resetCheckins() {
+    if (!(await requireAdmin())) return;
     const r = await modal({ title: 'Azzerare i check-in?', text: settings.sync ? 'Cancella ingressi, uscite e note su TUTTI i telefoni collegati. Non si può annullare.' : 'Tutti gli ingressi e le note verranno cancellati. La lista resta. Non si può annullare.', ok: 'Azzera', danger: true });
     if (!r.ok) return;
     const now = Date.now();
@@ -968,9 +991,10 @@ const ACTIONS = {
     renderAll(); showPage('checkin');
     toast('Dati cancellati', 'warn');
   },
-  logout() { try { sessionStorage.removeItem('ptAuthed'); } catch {} clearInterval(sync.timer); showAuth(true); },
+  logout() { try { sessionStorage.removeItem('ptAuthed'); sessionStorage.removeItem('ptAdmin'); } catch {} clearInterval(sync.timer); showAuth(true); },
   deviceName: () => askOperator(true),
   async scriptUrl() {
+    if (!(await requireAdmin())) return;
     const res = await modal({ title: 'Indirizzo script', text: 'L\'URL dell\'app web Google (finisce con /exec). È lo stesso di assets/js/config.js del sito.',
       body: `<label class="field"><textarea id="urlTxt" rows="3">${esc(settings.url)}</textarea></label><button class="link-btn" id="urlReset" type="button">Ripristina predefinito</button>`, ok: 'Salva',
       onBody: b => b.querySelector('#urlReset').onclick = () => { $('#urlTxt').value = DEFAULT_SCRIPT_URL; } });
