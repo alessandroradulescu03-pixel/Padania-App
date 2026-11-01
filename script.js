@@ -695,23 +695,39 @@ window.addEventListener('scroll', () => {
   if (t && !$('#dash').hidden) t.classList.toggle('stuck', t.getBoundingClientRect().top <= 0.5);
 }, { passive: true });
 
-/* ─── RICERCA VOCALE ─── */
+/* ─── RICERCA VOCALE ───
+   Su iPhone, se il permesso viene negato, a volte non arriva l'evento di fine:
+   per questo il pulsante si spegne da solo su errore, dopo un silenzio o al massimo dopo 12 secondi. */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (SR) {
-  $('#micBtn').hidden = false;
-  let rec = null;
-  $('#micBtn').addEventListener('click', () => {
-    if (rec) { rec.stop(); return; }
+  const mic = $('#micBtn');
+  mic.hidden = false;
+  let rec = null, stopTimer = null, silenceTimer = null;
+  const micOff = () => {
+    clearTimeout(stopTimer); clearTimeout(silenceTimer);
+    mic.classList.remove('on');
+    const r = rec; rec = null;
+    if (r) { r.onend = r.onerror = r.onresult = null; try { r.abort(); } catch {} }
+  };
+  mic.addEventListener('click', () => {
+    if (rec) { micOff(); return; }
     rec = new SR(); rec.lang = 'it-IT'; rec.interimResults = true; rec.maxAlternatives = 1;
-    $('#micBtn').classList.add('on');
+    mic.classList.add('on');
+    stopTimer = setTimeout(micOff, 12000);
     rec.onresult = e => {
-      const txt = [...e.results].map(x => x[0].transcript).join(' ').replace(/[.,!?]/g, '');
+      const txt = [...e.results].map(x => x[0].transcript).join(' ').replace(/[.,!?]/g, '').trim();
       $('#searchInput').value = txt; $('#searchClear').hidden = !txt;
       shown = PAGE; renderList();
+      clearTimeout(silenceTimer); silenceTimer = setTimeout(micOff, 1800);   // 1,8 s di silenzio = fine
+      if (e.results[e.results.length - 1].isFinal) setTimeout(micOff, 300);
     };
-    rec.onerror = e => { if (e.error === 'not-allowed') toast('Permesso microfono negato', 'err'); };
-    rec.onend = () => { $('#micBtn').classList.remove('on'); rec = null; };
-    try { rec.start(); } catch { $('#micBtn').classList.remove('on'); rec = null; }
+    rec.onerror = e => {
+      micOff();
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Microfono non autorizzato: puoi attivarlo nelle impostazioni del telefono', 'err');
+      else if (e.error === 'no-speech') toast('Non ho sentito niente, riprova', 'warn');
+    };
+    rec.onend = micOff;
+    try { rec.start(); } catch { micOff(); }
   });
 }
 
