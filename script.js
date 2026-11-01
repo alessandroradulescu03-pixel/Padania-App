@@ -21,6 +21,8 @@ const ADMIN_HASH = 'c906338955e9bd5977af6f0888dc965dd856300b59ac77883ec6fe0d2560
 const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbweHwQuH_P4cblhQDbDnI6Ri86qSEqwWyMSCgTRZJ3yFjr5KV_0Q8NpHRUUOVoqZTrjug/exec';
 
 const K_LIST = 'pt4_list', K_RECS = 'pt4_recs', K_QUEUE = 'pt4_queue', K_SET = 'pt4_settings', K_KEY = 'pt4_key';
+/* Versione dell'app: AUMENTALA a ogni modifica, così i telefoni si accorgono dell'aggiornamento */
+const APP_VERSION = '4.4';
 const PAGE = 60;
 const SYNC_EVERY = 2500;          // ogni 2,5 s chiede "è cambiato qualcosa?" (risposta leggerissima)
 
@@ -1133,6 +1135,8 @@ const ACTIONS = {
   },
   logout() { try { sessionStorage.removeItem('ptAuthed'); sessionStorage.removeItem('ptAdmin'); } catch {} clearInterval(sync.timer); showAuth(true); },
   deviceName: () => askOperator(true),
+  updateApp: () => checkUpdate(true),
+  forceUpdate: () => updateApp(),
   async capacity() {
     const res = await modal({ title: 'Capienza massima', text: 'Quante persone possono stare dentro insieme? L\'app avvisa al 75% (quasi al completo), al 90% (ultimi posti) e al 100%. Lascia vuoto o 0 per disattivare.',
       body: `<label class="field"><input id="capIn" type="number" inputmode="numeric" min="0" value="${settings.capacity || ''}" placeholder="Es. 100"></label>`, ok: 'Salva', focus: '#capIn' });
@@ -1430,3 +1434,50 @@ window.addEventListener('load', () => setTimeout(hideSplash, 350));
 setTimeout(hideSplash, 2500);
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+
+/* =====================================================
+   AGGIORNAMENTO APP
+   Dalla Home di iPhone non c'è il tasto "ricarica": questo scarica
+   l'ultima versione da GitHub e riavvia. Lista e check-in restano.
+   ===================================================== */
+const APP_FILES = ['./', './index.html', './script.js', './style.css', './sw.js', './manifest.webmanifest', './schermo.html'];
+async function updateApp() {
+  if (!navigator.onLine) return toast('Serve internet per aggiornare', 'err');
+  toast('Scarico l\'ultima versione…');
+  try {
+    if (Object.keys(queue).length && settings.sync) await syncNow();          // prima manda i check-in in sospeso
+    await Promise.all(APP_FILES.map(u => fetch(u, { cache: 'reload' }).catch(() => {})));   // salta la cache del telefono
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); }
+  } catch (e) { console.error(e); }
+  try { sessionStorage.setItem('ptJustUpdated', APP_VERSION); } catch {}
+  location.replace(location.pathname + '?v=' + Date.now());
+}
+
+/* controlla se su GitHub c'è una versione più nuova */
+async function checkUpdate(manual) {
+  if (!navigator.onLine) { if (manual) toast('Serve internet per controllare', 'err'); return; }
+  try {
+    const txt = await fetch('./script.js?check=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
+    const m = txt.match(/const APP_VERSION = '([^']+)'/);
+    const latest = m ? m[1] : APP_VERSION;
+    const isNew = latest !== APP_VERSION;
+    $('#updBanner').hidden = !isNew;
+    $('#updBanner').innerHTML = `✨ <b>Nuova versione disponibile</b> (v${esc(latest)}) · Tocca per aggiornare`;
+    $('#updTxt').textContent = isNew ? `Disponibile la v${latest} · tocca per aggiornare` : `Versione v${APP_VERSION} · sei aggiornato`;
+    if (manual) isNew ? updateApp() : toast(`Hai già l'ultima versione (v${APP_VERSION}) ✓`);
+  } catch (e) { console.error(e); if (manual) toast('Controllo non riuscito, riprova', 'err'); }
+}
+$('#updBanner').addEventListener('click', updateApp);
+$('#appVersion').textContent = 'v' + APP_VERSION;
+$('#updTxt').textContent = `Versione v${APP_VERSION}`;
+try {
+  const j = sessionStorage.getItem('ptJustUpdated');
+  if (j) { sessionStorage.removeItem('ptJustUpdated'); if (location.search.includes('v=')) history.replaceState(null, '', location.pathname); setTimeout(() => toast(`App aggiornata alla v${APP_VERSION} ✓`), 900); }
+} catch {}
+setTimeout(() => checkUpdate(false), 4000);
+setInterval(() => { if (document.visibilityState === 'visible') checkUpdate(false); }, 10 * 60000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(false); });

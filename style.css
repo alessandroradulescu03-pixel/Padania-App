@@ -378,3 +378,7 @@ small.by{color:var(--muted);font-size:12px;font-weight:500;margin-left:4px}
 .bio-btn{margin-bottom:6px;font-size:16px;padding:15px}
 .pw-or{display:flex;align-items:center;gap:10px;color:var(--dim);font-size:12px;margin:14px 0}
 .pw-or:before,.pw-or:after{content:"";flex:1;height:1px;background:var(--line2)}
+/* aggiornamento */
+.upd-banner{width:100%;text-align:left;margin-bottom:12px;padding:12px 14px;border-radius:14px;background:rgba(122,167,255,.1);border:1px solid rgba(122,167,255,.45);color:#c9d9ff;font-size:14px}
+.upd-banner b{color:#fff}
+.version .link-btn{font-size:12px;color:var(--dim)}

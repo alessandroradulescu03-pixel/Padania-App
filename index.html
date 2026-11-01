@@ -91,6 +91,7 @@
         </div>
       </div>
 
+      <button class="upd-banner" id="updBanner" hidden></button>
       <div class="cap-banner" id="capBanner" hidden></div>
       <button class="dup-banner" id="dupBanner" data-action="showDups" hidden></button>
 
@@ -166,6 +167,11 @@
   <!-- ===== PAGINA STRUMENTI ===== -->
   <main id="page-tools" class="page" hidden>
     <h2 class="page-title display">Strumenti</h2>
+
+    <div class="group-label">App</div>
+    <div class="menu">
+      <button class="menu-item" data-action="updateApp"><span class="mi-ico">🔄</span><span><b>Aggiorna app</b><small id="updTxt">Versione</small></span></button>
+    </div>
 
     <div class="group-label">Collegamento online</div>
     <div class="online-card" id="onlineCard">
@@ -307,16 +313,25 @@
         <li>Fotocamera e microfono: per non far chiedere il permesso ogni volta, su iPhone vai in <i>Impostazioni → App → Safari → Fotocamera / Microfono → Consenti</i>.</li>
       </ul>
 
+      <h4>🔄 Aggiornare l'app</h4>
+      <ul>
+        <li>Quando esce una versione nuova, nella pagina Check-in compare il banner blu <b>“Nuova versione disponibile”</b>: toccalo e l'app si aggiorna da sola.</li>
+        <li>Puoi controllare quando vuoi da <i>Strumenti → Aggiorna app</i>: sotto vedi la versione che hai.</li>
+        <li><b>Lista, check-in, nome e accesso restano</b>: l'aggiornamento cambia solo l'app. Gli ingressi non ancora inviati partono prima di aggiornare.</li>
+        <li>Se qualcosa non torna, in fondo a Strumenti c'è <b>“forza aggiornamento”</b>, che riscarica tutto da capo.</li>
+        <li>Serve internet: aggiorna prima di arrivare all'evento.</li>
+      </ul>
+
       <h4>💡 Consigli per la serata</h4>
       <ul>
-        <li>Scarica la lista <b>prima</b> di arrivare all'evento, quando hai una buona connessione.</li>
+        <li>Scarica la lista e <b>aggiorna l'app</b> prima di arrivare all'evento, quando hai una buona connessione: controlla che tutti i telefoni abbiano la stessa versione.</li>
         <li>Fai una prova con 2 telefoni: un ingresso su uno deve comparire sull'altro.</li>
         <li>Prepara lo <b>schermo live</b> su un tablet o una TV e controlla che compaia <span class="g-ok">● LIVE</span>.</li>
         <li>Tieni il telefono in carica o con un powerbank: scanner e schermo acceso consumano.</li>
         <li>A fine serata: <b>Esporta Excel</b> + <b>Riepilogo PDF</b>.</li>
       </ul>
     </details>
-    <p class="version">PadaniaTuning Check-in · v4.2</p>
+    <p class="version">PadaniaTuning Check-in · <span id="appVersion"></span> · <button class="link-btn" data-action="forceUpdate">forza aggiornamento</button></p>
   </main>
 </div>
 
