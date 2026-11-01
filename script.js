@@ -77,6 +77,7 @@ function prepare() {
     r._name = personName(r);
     r._first = norm(r.c[cols.nome]); r._last = cols.cognome >= 0 ? norm(r.c[cols.cognome]) : '';
     r._search = norm(r.c.join(' '));
+    r._compact = r.c.map(x => norm(x).replace(/[\s\-.]/g, ''));   // targhe: "AB 123 CD" = "ab123cd" = "AB-123-CD"
     r._initials = norm(r._name).split(' ').filter(Boolean).map(w => w[0]).join('');
     r._sub = cols.info.map(i => String(r.c[i] ?? '').trim()).filter(Boolean).slice(0, 3).join(' · ');
   });
@@ -244,6 +245,8 @@ function renderCounts() {
 function matches(r, q, tokens) {
   if (!q) return true;
   if (tokens.every(t => r._search.includes(t))) return true;
+  const qc = q.replace(/[\s\-.]/g, '');
+  if (qc.length >= 3 && r._compact.some(c => c.includes(qc))) return true;
   return q.length >= 2 && /^[a-z]+$/.test(q) && r._initials.startsWith(q);
 }
 
