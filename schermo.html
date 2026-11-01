@@ -4,137 +4,175 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PadaniaTuning · Schermo live</title>
-<meta name="theme-color" content="#08080a">
+<meta name="theme-color" content="#060608">
 <link rel="icon" type="image/png" href="./assets/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800;1,900&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#08080a;--card:rgba(22,22,26,.78);--line:rgba(255,255,255,.07);--line2:rgba(255,255,255,.12);
-  --text:#f2f3f5;--muted:#8b8d94;--dim:#5d5f66;--silver:#d7dade;
-  --chrome:linear-gradient(180deg,#ffffff 0%,#d3d7dc 45%,#8f959c 52%,#e9ecef 100%);
-  --ok:#34d27b;--ok2:#7cf0ad;--wait:#f5a524;--bad:#ff5a52;--blue:#7aa7ff;
+  --bg:#060608;
+  --glass:linear-gradient(160deg,rgba(255,255,255,.065),rgba(255,255,255,.02) 40%,rgba(255,255,255,.01));
+  --line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);
+  --text:#f4f5f7;--muted:#8d9098;--dim:#5a5d65;--silver:#d9dce0;
+  --chrome:linear-gradient(180deg,#ffffff 0%,#dfe2e6 38%,#8a9097 50%,#c9cdd2 62%,#f4f6f8 100%);
+  --ok:#2ee07f;--ok2:#9bffc8;--wait:#ffb02e;--bad:#ff4d4d;--blue:#6ea8ff;--violet:#b58cff;
   --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
-body{font-family:"Barlow",system-ui,sans-serif;color:var(--text);background:var(--bg);overflow:hidden}
+body{font-family:"Barlow",system-ui,sans-serif;color:var(--text);background:var(--bg);overflow:hidden;-webkit-font-smoothing:antialiased}
 body.idle{cursor:none}
 .d{font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
 
-/* sfondo: bagliore + linee di velocità */
-.bg{position:fixed;inset:0;z-index:-1;overflow:hidden;
-  background:
-    radial-gradient(60% 50% at 18% 0%,rgba(52,210,123,.10),transparent 70%),
-    radial-gradient(50% 50% at 100% 100%,rgba(215,218,222,.07),transparent 70%),
-    var(--bg)}
-.bg:before{content:"";position:absolute;inset:-50%;opacity:.35;
-  background:repeating-linear-gradient(115deg,transparent 0 46px,rgba(255,255,255,.025) 46px 48px);
-  animation:drift 40s linear infinite}
-@keyframes drift{to{transform:translateX(96px)}}
-.flag{position:fixed;left:0;right:0;top:0;height:.7vh;z-index:5;
-  background:repeating-conic-gradient(#e9ecef 0 25%,#111 0 50%) 0 0/1.4vh 1.4vh;opacity:.85}
+/* ───── SFONDO VIVO ───── */
+.bg{position:fixed;inset:0;z-index:-2;overflow:hidden;background:var(--bg)}
+.blob{position:absolute;width:70vmax;height:70vmax;border-radius:50%;filter:blur(9vmax);opacity:.55;mix-blend-mode:screen;animation:float 26s ease-in-out infinite alternate}
+.blob.b1{background:radial-gradient(circle,rgba(46,224,127,.38),transparent 60%);left:-25vmax;top:-30vmax}
+.blob.b2{background:radial-gradient(circle,rgba(110,168,255,.22),transparent 60%);right:-30vmax;bottom:-35vmax;animation-duration:32s;animation-delay:-8s}
+.blob.b3{background:radial-gradient(circle,rgba(217,220,224,.14),transparent 60%);left:30vw;top:20vh;width:50vmax;height:50vmax;animation-duration:38s;animation-delay:-14s}
+@keyframes float{0%{transform:translate(0,0) scale(1)}50%{transform:translate(6vw,4vh) scale(1.08)}100%{transform:translate(-4vw,6vh) scale(.95)}}
+.grid{position:fixed;left:-50%;right:-50%;bottom:-10vh;height:55vh;z-index:-1;opacity:.5;
+  background-image:linear-gradient(rgba(255,255,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.07) 1px,transparent 1px);
+  background-size:6vh 6vh;transform:perspective(60vh) rotateX(62deg);transform-origin:bottom;
+  -webkit-mask-image:linear-gradient(0deg,#000 10%,transparent 85%);mask-image:linear-gradient(0deg,#000 10%,transparent 85%);
+  animation:road 3s linear infinite}
+@keyframes road{to{background-position:0 6vh}}
+.flag{position:fixed;left:0;right:0;top:0;height:.8vh;z-index:5;background:repeating-conic-gradient(#eef0f2 0 25%,#0c0c0e 0 50%) 0 0/1.6vh 1.6vh;opacity:.9}
 
-.wrap{height:100vh;display:grid;grid-template-rows:auto 1fr auto;gap:2.2vh;padding:3.4vh 3vw 2.4vh}
+/* ───── STRUTTURA ───── */
+.wrap{height:100vh;display:grid;grid-template-rows:auto 1fr;gap:2.4vh;padding:3.6vh 2.6vw 4.6vh}
 header{display:flex;align-items:center;justify-content:space-between;gap:2vw}
-.brand{display:flex;align-items:center;gap:1.4vw;min-width:0}
-.brand img{height:9.5vh;width:9.5vh;border-radius:24%;box-shadow:0 0 0 1px var(--line2),0 1.4vh 4vh rgba(0,0,0,.6)}
-.brand h1{font-size:6vh;line-height:.95;font-style:italic;background:var(--chrome);-webkit-background-clip:text;background-clip:text;color:transparent}
-.brand p{color:var(--muted);font-size:2.2vh;margin-top:.6vh;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.right{display:flex;align-items:center;gap:2vw}
-.clock{font-family:var(--display);font-weight:700;font-size:7vh;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.brand{display:flex;align-items:center;gap:1.3vw;min-width:0}
+.logo{position:relative;height:9.5vh;width:9.5vh;border-radius:26%;overflow:hidden;box-shadow:0 0 0 1px var(--line2),0 1.6vh 4vh rgba(0,0,0,.7)}
+.logo img{width:100%;height:100%;display:block}
+.logo:after{content:"";position:absolute;inset:-50%;background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.45) 50%,transparent 60%);animation:shine 5s ease-in-out infinite}
+@keyframes shine{0%,60%{transform:translateX(-60%)}100%{transform:translateX(60%)}}
+.brand h1{font-size:6.6vh;line-height:.9;font-style:italic;font-weight:900;background:var(--chrome);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 .4vh 1.6vh rgba(0,0,0,.6))}
+.brand p{color:var(--muted);font-size:2.1vh;margin-top:.7vh;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.05em}
+.right{display:flex;align-items:center;gap:1.8vw}
+.live{position:relative;display:inline-flex;align-items:center;gap:.8vw;font-family:var(--display);font-weight:800;font-size:2.6vh;letter-spacing:.3vh;padding:1vh 1.6vw 1vh 1.3vw;border-radius:99px;background:rgba(46,224,127,.1);color:var(--ok);border:1px solid rgba(46,224,127,.35);box-shadow:0 0 3vh rgba(46,224,127,.15)}
+.live i{position:relative;width:1.3vh;height:1.3vh;border-radius:50%;background:currentColor}
+.live i:after{content:"";position:absolute;inset:0;border-radius:50%;background:currentColor;animation:ping 1.6s cubic-bezier(0,0,.2,1) infinite}
+@keyframes ping{75%,100%{transform:scale(3);opacity:0}}
+.live.off{background:rgba(255,77,77,.1);color:var(--bad);border-color:rgba(255,77,77,.35);box-shadow:none}
+.clock{font-family:var(--display);font-weight:700;font-size:7.4vh;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.02em}
 .clock small{font-size:3.4vh;color:var(--dim);margin-left:.3vw}
-.live{display:inline-flex;align-items:center;gap:.7vw;font-weight:800;font-size:2.1vh;letter-spacing:.2vh;padding:1vh 1.4vw;border-radius:99px;background:rgba(52,210,123,.12);color:var(--ok);border:1px solid rgba(52,210,123,.3)}
-.live:before{content:"";width:1.2vh;height:1.2vh;border-radius:50%;background:currentColor;box-shadow:0 0 1.4vh currentColor;animation:pulse 1.6s infinite}
-.live.off{background:rgba(255,90,82,.12);color:var(--bad);border-color:rgba(255,90,82,.3)}
-@keyframes pulse{50%{opacity:.25}}
 
-main{display:grid;grid-template-columns:1.3fr 1fr;grid-template-rows:1fr auto;gap:2.2vh 1.6vw;min-height:0}
-.card{background:var(--card);border:1px solid var(--line);border-radius:2.6vh;padding:2.8vh 2vw;min-height:0;position:relative;overflow:hidden;
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 2vh 5vh rgba(0,0,0,.35)}
-.card:before{content:"";position:absolute;inset:0 0 auto 0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.22),transparent)}
-.lbl{font-size:1.9vh;font-weight:700;letter-spacing:.3vh;color:var(--muted);text-transform:uppercase}
+main{display:grid;grid-template-columns:1fr 1.05fr 1.15fr;grid-template-rows:1.35fr 1fr;gap:2vh 1.4vw;min-height:0}
+.card{position:relative;border-radius:3vh;padding:2.8vh 1.8vw;min-height:0;overflow:hidden;
+  background:var(--glass);border:1px solid var(--line);
+  backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 3vh 6vh rgba(0,0,0,.45)}
+.lbl{font-family:var(--display);font-size:2.2vh;font-weight:700;letter-spacing:.4vh;color:var(--muted);text-transform:uppercase;display:flex;align-items:center;gap:.7vw;white-space:nowrap}
+.lbl:before{content:"";width:.5vw;height:.5vw;min-width:6px;min-height:6px;border-radius:2px;background:var(--chrome);transform:skewX(-20deg)}
 
-/* hero */
-.hero{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2vw;background:linear-gradient(150deg,rgba(30,32,36,.9),rgba(14,14,17,.9))}
-.hero-main{display:flex;flex-direction:column;justify-content:center;min-width:0}
-.big{font-family:var(--display);font-weight:800;font-size:31vh;line-height:.82;margin:1vh 0 1.4vh;font-variant-numeric:tabular-nums;
-  background:linear-gradient(180deg,var(--ok2),var(--ok));-webkit-background-clip:text;background-clip:text;color:transparent;
-  filter:drop-shadow(0 0 4vh rgba(52,210,123,.25));transition:transform .35s cubic-bezier(.2,1.6,.4,1)}
-.big.bump{transform:scale(1.06)}
-.sub{font-size:2.8vh;color:var(--muted)}
-.sub b{color:var(--text);font-weight:700}
-.sub .o{color:var(--blue)}
-.ring{--p:0;--c:var(--ok);width:34vh;height:34vh;border-radius:50%;position:relative;display:grid;place-items:center;
-  background:conic-gradient(var(--c) calc(var(--p)*1%),rgba(255,255,255,.06) 0);transition:--p .6s}
-.ring:before{content:"";position:absolute;inset:2.4vh;border-radius:50%;background:radial-gradient(circle at 50% 30%,#1d1e22,#101013)}
-.ring div{position:relative;text-align:center}
-.ring b{display:block;font-family:var(--display);font-weight:800;font-size:9vh;line-height:1}
-.ring span{font-size:1.9vh;font-weight:700;letter-spacing:.3vh;color:var(--muted);text-transform:uppercase}
-.ring em{display:block;font-style:normal;font-size:2.3vh;color:var(--muted);margin-top:.6vh}
-.capmsg{margin-top:2vh;display:inline-flex;align-items:center;gap:.8vw;font-size:2.6vh;font-weight:700;padding:1vh 1.4vw;border-radius:1.4vh;width:max-content}
-.capmsg.l1{color:var(--wait);background:rgba(245,165,36,.12)}
-.capmsg.l2{color:#ff8a3d;background:rgba(255,138,61,.14)}
-.capmsg.l3{color:var(--bad);background:rgba(255,90,82,.14);animation:pulse 1.4s infinite}
+/* ───── HERO: DENTRO ORA ───── */
+.hero{grid-row:1/3;display:flex;flex-direction:column;
+  background:radial-gradient(120% 70% at 0% 0%,rgba(46,224,127,.16),transparent 60%),var(--glass)}
+.hero .big{font-family:var(--display);font-weight:900;font-style:italic;font-size:34vh;line-height:.8;margin:2vh 0 0 -.6vw;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+  background:linear-gradient(180deg,#d9ffe9 0%,var(--ok2) 25%,var(--ok) 75%,#14a957 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 5vh rgba(46,224,127,.35));transition:transform .4s cubic-bezier(.2,1.6,.4,1)}
+.hero .big.bump{transform:scale(1.05) skewX(-3deg)}
+.hero .tag{font-size:2.6vh;color:var(--muted);margin-top:1.4vh}
+.hero .tag b{color:var(--text)}
+.tiles{margin-top:auto;display:grid;grid-template-columns:1fr 1fr;gap:1.2vh .8vw}
+.tile{border-radius:2vh;padding:1.6vh 1.1vw;background:rgba(255,255,255,.035);border:1px solid var(--line);position:relative;overflow:hidden}
+.tile span{display:block;font-size:1.7vh;font-weight:700;letter-spacing:.25vh;color:var(--muted);text-transform:uppercase}
+.tile b{display:block;font-family:var(--display);font-weight:800;font-size:6.6vh;line-height:1;margin-top:.5vh;font-variant-numeric:tabular-nums}
+.tile:after{content:"";position:absolute;left:0;top:18%;bottom:18%;width:3px;border-radius:0 3px 3px 0;background:var(--c,var(--silver))}
+.tile.t-tot{--c:var(--silver)}.tile.t-in{--c:var(--ok)}.tile.t-out{--c:var(--blue)}.tile.t-wait{--c:var(--wait)}
+.tile.t-wait b{color:var(--wait)}.tile.t-out b{color:var(--blue)}
+.capmsg{margin-top:1.6vh;display:inline-flex;align-items:center;gap:.8vw;font-family:var(--display);font-size:3vh;font-weight:800;letter-spacing:.1vh;text-transform:uppercase;padding:.9vh 1.3vw;border-radius:1.4vh;width:max-content}
+.capmsg.l1{color:var(--wait);background:rgba(255,176,46,.12);border:1px solid rgba(255,176,46,.35)}
+.capmsg.l2{color:#ff8a3d;background:rgba(255,138,61,.14);border:1px solid rgba(255,138,61,.4)}
+.capmsg.l3{color:#fff;background:var(--bad);box-shadow:0 0 4vh rgba(255,77,77,.5);animation:blink 1.1s infinite}
+@keyframes blink{50%{opacity:.55}}
 
-/* colonna destra */
-.side{display:grid;grid-template-rows:auto 1fr;gap:2.2vh;min-height:0}
-.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2vw}
-.num b{display:block;font-family:var(--display);font-weight:800;font-size:9.5vh;line-height:1;margin-top:.8vh;font-variant-numeric:tabular-nums}
-.num.w b{color:var(--wait)}
-.num .mini{height:.8vh;border-radius:99px;background:rgba(255,255,255,.07);margin-top:1.4vh;overflow:hidden}
-.num .mini i{display:block;height:100%;width:0;border-radius:99px;background:var(--chrome);transition:width .6s}
-.arrivals{display:flex;flex-direction:column}
-.recent{list-style:none;margin-top:1.4vh;flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:1vh;
-  -webkit-mask-image:linear-gradient(180deg,#000 75%,transparent);mask-image:linear-gradient(180deg,#000 75%,transparent)}
-.recent li{display:flex;align-items:center;gap:1.2vw;padding:1.1vh 1vw;border-radius:1.6vh;background:rgba(255,255,255,.035);border:1px solid var(--line);animation:in .6s cubic-bezier(.2,1,.3,1)}
-.recent li.new{background:rgba(52,210,123,.12);border-color:rgba(52,210,123,.35)}
-.av{flex:0 0 6vh;height:6vh;border-radius:1.6vh;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:2.8vh;background:rgba(255,255,255,.06);color:var(--silver);border:1px solid var(--line2)}
-.recent li.new .av{color:var(--ok);border-color:rgba(52,210,123,.4)}
-.who{flex:1;min-width:0}
-.who b{display:block;font-size:2.9vh;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.who small{display:block;font-size:1.9vh;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.recent time{font-family:var(--display);font-weight:700;font-size:3.2vh;color:var(--ok);font-variant-numeric:tabular-nums}
-@keyframes in{from{opacity:0;transform:translateY(-1.6vh) scale(.98)}}
-.empty{color:var(--dim);font-size:2.4vh;padding:2vh 0}
+/* ───── CONTAGIRI ───── */
+.gauge-card{display:flex;flex-direction:column;padding-top:2.2vh}
+.gauge{position:relative;width:100%;flex:1;min-height:0}
+.gauge svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.gauge .tick{stroke:rgba(255,255,255,.22);stroke-width:1.2}
+.gauge .tick.mj{stroke:rgba(255,255,255,.65);stroke-width:2.4}
+.gauge .tick.red{stroke:var(--bad)}
+.gauge .num{fill:var(--muted);font-family:var(--display);font-weight:700;font-size:15px;text-anchor:middle;dominant-baseline:middle}
+.gauge .num.red{fill:var(--bad)}
+.gauge #arcVal{transition:stroke-dashoffset 1s cubic-bezier(.3,1,.4,1),stroke .6s}
+#needle{transform-origin:150px 150px;transition:transform 1.1s cubic-bezier(.34,1.56,.5,1)}
+.gauge .gv{fill:#fff;font-family:var(--display);font-weight:900;font-style:italic;font-size:46px}
+.gauge .gs{fill:var(--muted);font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:3px;text-transform:uppercase}
 
-/* grafico */
-.chart-card{grid-column:1/-1;padding-bottom:2vh}
-.chart-head{display:flex;justify-content:space-between;align-items:baseline}
-.chart-head span{font-size:2vh;color:var(--muted)}
+/* ───── GRAFICO AREA ───── */
+.chart-card{display:flex;flex-direction:column}
+.chart-head{display:flex;justify-content:space-between;align-items:center;gap:1vw}
+.chart-head span{font-size:1.9vh;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chart-head b{color:var(--text)}
-.chart{display:flex;align-items:flex-end;gap:.5vw;height:15vh;margin-top:1.6vh}
-.chart .c{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:.6vh;min-width:0}
-.chart .v{font-size:1.6vh;font-weight:700;color:var(--muted);min-height:1.8vh}
-.chart .b{width:100%;max-width:4.6vw;min-height:.5vh;border-radius:1vh 1vh .3vh .3vh;background:linear-gradient(180deg,#eef0f2,#6f747b);transition:height .6s}
-.chart .b.z{background:rgba(255,255,255,.06)}
-.chart .b.p{background:linear-gradient(180deg,var(--ok2),var(--ok));box-shadow:0 0 2.4vh rgba(52,210,123,.35)}
-.chart .l{font-size:1.5vh;color:var(--dim);white-space:nowrap;min-height:1.8vh}
+.area{position:relative;flex:1;min-height:0;margin-top:1.4vh}
+.area svg{position:absolute;left:0;right:0;top:0;width:100%;height:calc(100% - 2.6vh);overflow:visible}
+.area .xl{position:absolute;left:0;right:0;bottom:0;height:2.2vh}
+.area .xl span{position:absolute;transform:translateX(-50%);font-size:1.5vh;color:var(--dim);white-space:nowrap}
+.area .dot{position:absolute;width:1.6vh;height:1.6vh;border-radius:50%;background:var(--ok2);box-shadow:0 0 0 .5vh rgba(46,224,127,.25),0 0 3vh var(--ok);transform:translate(-50%,50%)}
+.area .dot:after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--ok);animation:ping 1.8s cubic-bezier(0,0,.2,1) infinite}
+.empty{color:var(--dim);font-size:2.3vh;padding:2vh 0}
 
-footer{display:flex;justify-content:space-between;align-items:center;color:var(--dim);font-size:1.8vh}
-footer button{background:none;border:1px solid var(--line2);color:var(--muted);border-radius:99px;padding:.7vh 1.4vw;font:inherit;cursor:pointer}
+/* ───── ATTIVITÀ LIVE ───── */
+.feed-card{grid-row:1/3;grid-column:3;display:flex;flex-direction:column}
+.feed-head{display:flex;justify-content:space-between;align-items:center;gap:1vw;flex-wrap:wrap}
+.lg{display:flex;gap:.8vw;font-size:1.4vh;color:var(--dim);white-space:nowrap}
+.lg i{display:inline-block;width:.9vh;height:.9vh;border-radius:50%;margin-right:.35vw;vertical-align:.1vh}
+.recent{list-style:none;margin-top:1.6vh;flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:1vh;
+  -webkit-mask-image:linear-gradient(180deg,#000 82%,transparent);mask-image:linear-gradient(180deg,#000 82%,transparent)}
+.recent li{--c:var(--silver);position:relative;display:flex;align-items:center;gap:1vw;padding:1.2vh 1vw 1.2vh 1.3vw;border-radius:1.8vh;
+  background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.015));border:1px solid var(--line);overflow:hidden;transition:background 1s,border-color 1s,box-shadow 1s}
+.recent li:before{content:"";position:absolute;left:0;top:0;bottom:0;width:.35vw;min-width:3px;background:var(--c);box-shadow:0 0 2vh var(--c)}
+.recent li.t-i,.recent li.t-r{--c:var(--ok)}.recent li.t-a{--c:var(--violet)}.recent li.t-o{--c:var(--blue)}.recent li.t-x{--c:var(--bad)}
+.recent li.enter{animation:slideIn .8s cubic-bezier(.2,1.1,.3,1)}
+.recent li.enter:after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.25) 50%,transparent 70%);animation:sweep 1.2s ease-out forwards}
+@keyframes slideIn{from{opacity:0;transform:translateX(6vw) scale(.96)}}
+@keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.recent li.new{border-color:color-mix(in srgb,var(--c) 45%,transparent);background:linear-gradient(90deg,color-mix(in srgb,var(--c) 16%,transparent),rgba(255,255,255,.02));box-shadow:0 0 3vh color-mix(in srgb,var(--c) 14%,transparent)}
+.ic{flex:0 0 5.6vh;height:5.6vh;border-radius:1.6vh;display:grid;place-items:center;font-size:2.7vh;font-weight:800;color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);border:1px solid color-mix(in srgb,var(--c) 40%,transparent)}
+.who{flex:1;min-width:0}
+.who b{display:block;font-size:2.7vh;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who small em{font-style:normal;font-weight:700;color:var(--c)}
+.who small{display:block;font-size:1.8vh;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.2vh}
+.who small .op{color:var(--silver);font-weight:600}
+.recent time{font-family:var(--display);font-weight:700;font-size:3.1vh;font-variant-numeric:tabular-nums}
 
-/* benvenuto */
-.welcome{position:fixed;left:50%;bottom:6vh;transform:translate(-50%,3vh);opacity:0;z-index:8;pointer-events:none;
-  display:flex;align-items:center;gap:1.4vw;padding:2vh 3vw;border-radius:2.4vh;
-  background:linear-gradient(135deg,rgba(28,30,34,.96),rgba(14,14,17,.96));border:1px solid rgba(52,210,123,.45);
-  box-shadow:0 3vh 8vh rgba(0,0,0,.7),0 0 6vh rgba(52,210,123,.18);transition:opacity .4s,transform .5s cubic-bezier(.2,1.4,.4,1)}
-.welcome.show{opacity:1;transform:translate(-50%,0)}
-.welcome .fl{font-size:6vh}
-.welcome span{display:block;font-size:2.2vh;color:var(--muted);font-weight:700;letter-spacing:.3vh;text-transform:uppercase}
-.welcome b{display:block;font-family:var(--display);font-weight:800;font-style:italic;font-size:6vh;line-height:1;text-transform:uppercase;
-  background:var(--chrome);-webkit-background-clip:text;background-clip:text;color:transparent;white-space:nowrap}
+/* ───── BENVENUTO CINEMATOGRAFICO ───── */
+.welcome{position:fixed;left:0;right:0;top:50%;z-index:8;pointer-events:none;height:26vh;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;
+  opacity:0;visibility:hidden;transition:opacity .35s,visibility .35s}
+.welcome.show{opacity:1;visibility:visible}
+.welcome .band{position:absolute;inset:0;background:linear-gradient(90deg,rgba(6,6,8,0),rgba(10,12,14,.95) 15%,rgba(10,12,14,.95) 85%,rgba(6,6,8,0));
+  border-top:1px solid rgba(46,224,127,.5);border-bottom:1px solid rgba(46,224,127,.5);box-shadow:0 0 12vh rgba(46,224,127,.25);
+  transform:scaleX(0);transition:transform .6s cubic-bezier(.7,0,.2,1)}
+.welcome.show .band{transform:scaleX(1)}
+.welcome .band:before,.welcome .band:after{content:"";position:absolute;top:0;bottom:0;width:8vh;background:repeating-conic-gradient(#eef0f2 0 25%,#0c0c0e 0 50%) 0 0/3vh 3vh;opacity:.9}
+.welcome .band:before{left:12%;-webkit-mask-image:linear-gradient(90deg,transparent,#000);mask-image:linear-gradient(90deg,transparent,#000)}
+.welcome .band:after{right:12%;-webkit-mask-image:linear-gradient(270deg,transparent,#000);mask-image:linear-gradient(270deg,transparent,#000)}
+.welcome .txt{position:relative;text-align:center;transform:translateX(-30vw) skewX(-12deg);opacity:0;transition:transform .7s cubic-bezier(.2,1.2,.3,1) .15s,opacity .4s .15s}
+.welcome.show .txt{transform:none;opacity:1}
+.welcome span{display:block;font-family:var(--display);font-size:3.2vh;font-weight:800;letter-spacing:1.2vh;color:var(--ok);text-transform:uppercase}
+.welcome b{display:block;font-family:var(--display);font-weight:900;font-style:italic;font-size:12vh;line-height:1;text-transform:uppercase;white-space:nowrap;
+  background:var(--chrome);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 3vh rgba(255,255,255,.25))}
+.welcome small{display:block;font-size:2.4vh;color:var(--muted);margin-top:.8vh}
+.welcome .streak{position:absolute;top:0;bottom:0;width:30vw;left:-30vw;background:linear-gradient(90deg,transparent,rgba(255,255,255,.18),transparent);transform:skewX(-20deg)}
+.welcome.show .streak{animation:streak 1.4s .2s ease-out}
+@keyframes streak{to{left:110vw}}
+
+.fsbtn{position:fixed;right:2.6vw;bottom:1.2vh;z-index:6;background:rgba(255,255,255,.04);border:1px solid var(--line2);color:var(--muted);border-radius:99px;padding:.6vh 1.2vw;font:inherit;font-size:1.6vh;cursor:pointer;transition:opacity .4s}
+.upd{position:fixed;left:2.6vw;bottom:1.6vh;font-size:1.6vh;color:var(--dim)}
+body.idle .fsbtn{opacity:0}
 
 @media (orientation:portrait){
   body{overflow:auto}
   .wrap{height:auto;min-height:100vh}
   main{grid-template-columns:1fr;grid-template-rows:none}
-  .hero{grid-template-columns:1fr}
-  .ring{width:26vh;height:26vh;justify-self:center}
-  .big{font-size:20vh}
-  .chart-card{grid-column:auto}
-  .recent{max-height:50vh}
+  .hero,.feed-card{grid-row:auto;grid-column:auto}
+  .hero .big{font-size:22vh}
+  .gauge{height:40vh;flex:none}.area{height:24vh;flex:none}
+  .recent{max-height:60vh}
 }
 
 /* login */
@@ -147,10 +185,12 @@ footer button{background:none;border:1px solid var(--line2);color:var(--muted);b
 #login input{width:100%;padding:15px;border-radius:12px;border:1px solid #34343a;background:#111113;color:var(--text);font-size:16px;text-align:center;margin-bottom:12px;outline:0}
 #login button{width:100%;padding:15px;border-radius:12px;border:0;background:var(--chrome);color:#111;font-weight:800;font-size:16px;cursor:pointer}
 #login .err{color:var(--bad);min-height:20px;margin-top:10px;font-size:14px;font-weight:600}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
 </head>
 <body>
-<div class="bg"></div>
+<div class="bg"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+<div class="grid"></div>
 <div class="flag"></div>
 
 <div id="login" hidden>
@@ -167,49 +207,75 @@ footer button{background:none;border:1px solid var(--line2);color:var(--muted);b
 <div class="wrap">
   <header>
     <div class="brand">
-      <img src="./assets/logo.png" alt="">
+      <div class="logo"><img src="./assets/logo.png" alt=""></div>
       <div><h1 class="d">Padania Tuning</h1><p id="evName">Ingressi in tempo reale</p></div>
     </div>
-    <div class="right"><span class="live" id="live">LIVE</span><span class="clock" id="clock">--:--</span></div>
+    <div class="right"><span class="live" id="live"><i></i><span id="liveTxt">LIVE</span></span><span class="clock" id="clock">--:--</span></div>
   </header>
 
   <main>
     <section class="card hero">
-      <div class="hero-main">
-        <div class="lbl">Dentro ora</div>
-        <div class="big" id="inside">0</div>
-        <div class="sub"><b id="entered">0</b> entrati in totale<span id="outWrap"> · <b class="o" id="out">0</b> usciti</span></div>
-        <div class="capmsg" id="capMsg" hidden></div>
+      <div class="lbl">Dentro ora</div>
+      <div class="big" id="inside">0</div>
+      <div class="tag"><b id="entered">0</b> entrati in totale</div>
+      <div class="capmsg" id="capMsg" hidden></div>
+      <div class="tiles">
+        <div class="tile t-tot"><span>Iscritti</span><b id="tot">0</b></div>
+        <div class="tile t-wait"><span>Attesi</span><b id="wait">0</b></div>
+        <div class="tile t-in"><span>Arrivati</span><b id="pct">0%</b></div>
+        <div class="tile t-out"><span>Usciti</span><b id="out">0</b></div>
       </div>
-      <div class="ring" id="ring"><div><span id="ringLbl">Arrivati</span><b id="ringVal">0%</b><em id="ringSub"></em></div></div>
     </section>
 
-    <section class="side">
-      <div class="card nums">
-        <div class="num"><div class="lbl">Iscritti</div><b id="tot">0</b></div>
-        <div class="num w"><div class="lbl">Attesi</div><b id="wait">0</b></div>
-        <div class="num"><div class="lbl">Arrivati</div><b id="pct">0%</b><div class="mini"><i id="pctBar"></i></div></div>
-      </div>
-      <div class="card arrivals">
-        <div class="lbl">Ultimi arrivi</div>
-        <ul class="recent" id="recent"></ul>
+    <section class="card gauge-card">
+      <div class="lbl" id="gLbl">Arrivati</div>
+      <div class="gauge">
+        <svg viewBox="-10 0 320 270" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+          <defs>
+            <linearGradient id="gGrad" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#1fbf68"/><stop offset=".6" stop-color="#2ee07f"/><stop offset="1" stop-color="#9bffc8"/>
+            </linearGradient>
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <radialGradient id="hub"><stop offset="0" stop-color="#eef0f2"/><stop offset="1" stop-color="#6b7178"/></radialGradient>
+          </defs>
+          <path id="arcBg" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="14" stroke-linecap="round"/>
+          <path id="arcRed" fill="none" stroke="rgba(255,77,77,.35)" stroke-width="14" stroke-linecap="round"/>
+          <path id="arcVal" fill="none" stroke="url(#gGrad)" stroke-width="14" stroke-linecap="round" filter="url(#glow)"/>
+          <g id="ticks"></g>
+          <text id="gValT" x="150" y="228" text-anchor="middle" class="gv">0%</text>
+          <text id="gSubT" x="150" y="256" text-anchor="middle" class="gs">—</text>
+          <g id="needle">
+            <polygon points="145.5,150 150,58 154.5,150" fill="#ff4d4d" filter="url(#glow)"/>
+            <circle cx="150" cy="150" r="13" fill="url(#hub)"/>
+            <circle cx="150" cy="150" r="5" fill="#111"/>
+          </g>
+        </svg>
       </div>
     </section>
 
     <section class="card chart-card">
-      <div class="chart-head"><div class="lbl">Ingressi ogni 15 minuti</div><span id="peak"></span></div>
-      <div class="chart" id="chart"></div>
+      <div class="chart-head"><div class="lbl">Ingressi / 15 min</div><span id="peak"></span></div>
+      <div class="area" id="area"></div>
+    </section>
+
+    <section class="card feed-card">
+      <div class="feed-head"><div class="lbl">Attività live</div>
+        <div class="lg"><span><i style="background:var(--ok)"></i>entrata</span><span><i style="background:var(--blue)"></i>uscita</span><span><i style="background:var(--violet)"></i>in loco</span><span><i style="background:var(--bad)"></i>annullato</span></div></div>
+      <ul class="recent" id="recent"></ul>
     </section>
   </main>
-
-  <footer><span id="upd">In attesa dei dati…</span><button id="fs">⛶ Schermo intero</button></footer>
 </div>
 
-<div class="welcome" id="welcome"><div class="fl">🏁</div><div><span>Benvenuto</span><b id="welName"></b></div></div>
+<div class="upd" id="upd">In attesa dei dati…</div>
+<button class="fsbtn" id="fs">⛶ Schermo intero</button>
+
+<div class="welcome" id="welcome"><div class="band"></div><div class="streak"></div>
+  <div class="txt"><span id="welLbl">Benvenuto</span><b id="welName"></b><small id="welSub"></small></div></div>
 
 <script>
 /* Schermo live: legge gli stessi dati dell'app check-in (script Google) e si aggiorna da solo.
-   Parametri opzionali nell'indirizzo: ?cap=100 (capienza)  ·  ?nomi=0 (nasconde i nomi) */
+   Parametri opzionali nell'indirizzo: ?cap=100 (capienza)  ·  ?nomi=0 (nasconde i nomi)
+   Controlla ogni 1,5 s se è cambiato qualcosa (risposta leggerissima dallo script). */
 const PW_HASH = '3fc13c35bdb2d6f9146fcd93304ba3c2143d5d017268e17a939f0d315728c8a2';
 const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbweHwQuH_P4cblhQDbDnI6Ri86qSEqwWyMSCgTRZJ3yFjr5KV_0Q8NpHRUUOVoqZTrjug/exec';
 const $ = s => document.querySelector(s);
@@ -220,8 +286,8 @@ const URL_ = settings.url || DEFAULT_SCRIPT_URL;
 const CAP = +params.get('cap') || +settings.capacity || 0;
 const SHOW_NAMES = params.get('nomi') !== '0';
 let key = ''; try { key = localStorage.getItem('pt4_key') || ''; } catch {}
+let chartSig = '', gaugeSig = '';
 let recs = {}, names = {}, subs = {}, total = 0, listAt = 0, rev = '', lastInside = -1, ok = false, lastOk = 0;
-let seenMoves = null;
 
 const pad = n => String(n).padStart(2, '0');
 const fmt = t => new Date(t).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
@@ -229,7 +295,6 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
 const compact = s => norm(s).replace(/[\s\-.]/g, '');
 function hash(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36); }
-const initials = n => { const w = String(n).split(/\s+/).filter(Boolean); return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '✓'; };
 
 /* stesse regole dell'app per riconoscere le persone (così abbiamo i nomi anche dei vecchi check-in) */
 function columns(headers) {
@@ -306,7 +371,22 @@ async function tick(full) {
     render();
   } catch (e) { console.error(e); ok = false; }
   $('#live').className = 'live' + (ok ? '' : ' off');
-  $('#live').textContent = ok ? 'LIVE' : 'OFFLINE';
+  $('#liveTxt').textContent = ok ? 'LIVE' : 'OFFLINE';
+}
+
+/* numeri che "scorrono" fino al nuovo valore */
+function countTo(el, to, suffix = '') {
+  const from = +el.dataset.v || 0;
+  if (from === to && el.dataset.s === suffix && el.dataset.done) return;
+  el.dataset.v = to; el.dataset.s = suffix; el.dataset.done = '1';
+  const t0 = performance.now(), dur = Math.min(900, 250 + Math.abs(to - from) * 60);
+  const step = now => {
+    if (+el.dataset.v !== to) return;
+    const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(from + (to - from) * e) + suffix;
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 function render() {
@@ -315,82 +395,199 @@ function render() {
   const tot = total + added;
   const entered = keys.filter(k => recs[k].t), inside = entered.filter(k => !recs[k].o).length, out = entered.length - inside;
   const pct = tot ? Math.round(entered.length / tot * 100) : 0;
-  const set = (id, v) => { $(id).textContent = v; };
-  set('#inside', inside); set('#entered', entered.length); set('#out', out); $('#outWrap').hidden = !out;
-  set('#tot', tot); set('#wait', Math.max(0, tot - entered.length)); set('#pct', pct + '%');
-  $('#pctBar').style.width = pct + '%';
-  if (lastInside >= 0 && inside !== lastInside) { const b = $('#inside'); b.classList.add('bump'); setTimeout(() => b.classList.remove('bump'), 350); }
+  countTo($('#inside'), inside); countTo($('#entered'), entered.length); countTo($('#out'), out);
+  countTo($('#tot'), tot); countTo($('#wait'), Math.max(0, tot - entered.length)); countTo($('#pct'), pct, '%');
+  if (lastInside >= 0 && inside !== lastInside) { const b = $('#inside'); b.classList.add('bump'); setTimeout(() => b.classList.remove('bump'), 400); }
   lastInside = inside;
 
-  // anello: capienza se impostata, altrimenti % arrivati
-  const ring = $('#ring');
+  // contagiri: capienza se impostata, altrimenti % arrivati
   if (CAP) {
     const p = inside / CAP, lvl = p >= 1 ? 3 : p >= 0.9 ? 2 : p >= 0.75 ? 1 : 0;
-    ring.style.setProperty('--p', Math.min(100, Math.round(p * 100)));
-    ring.style.setProperty('--c', ['var(--silver)', 'var(--wait)', '#ff8a3d', 'var(--bad)'][lvl]);
-    set('#ringLbl', 'Capienza'); set('#ringVal', `${inside}/${CAP}`); set('#ringSub', lvl === 3 ? 'piena' : `${Math.max(0, CAP - inside)} posti liberi`);
+    drawGauge(Math.min(1, p), CAP, true, lvl);
+    $('#gLbl').textContent = 'Capienza';
+    countTo($('#gValT'), inside, '/' + CAP);
+    $('#gSubT').textContent = lvl === 3 ? 'piena' : `${Math.max(0, CAP - inside)} posti liberi`;
     $('#capMsg').hidden = !lvl; $('#capMsg').className = 'capmsg l' + lvl;
-    $('#capMsg').textContent = ['', '⚠️ Quasi al completo', `🟠 Ultimi posti: ne restano ${Math.max(0, CAP - inside)}`, '⛔ Capienza raggiunta'][lvl];
+    $('#capMsg').textContent = ['', '⚠️ Quasi al completo', `🟠 Ultimi ${Math.max(0, CAP - inside)} posti`, '⛔ Capienza raggiunta'][lvl];
   } else {
-    ring.style.setProperty('--p', pct); ring.style.setProperty('--c', 'var(--ok)');
-    set('#ringLbl', 'Arrivati'); set('#ringVal', pct + '%'); set('#ringSub', `${entered.length} su ${tot}`);
+    drawGauge(pct / 100, 100, false, 0);
+    $('#gLbl').textContent = 'Arrivati';
+    countTo($('#gValT'), pct, '%');
+    $('#gSubT').textContent = `${entered.length} su ${tot}`;
   }
 
-  // ultimi arrivi + benvenuto per chi è appena entrato
-  const moves = [];
-  keys.forEach(k => (recs[k].l || []).forEach(e => { if (e[1] === 'i') moves.push({ k, t: e[0], id: k + e[0] }); }));
-  moves.sort((a, b) => b.t - a.t);
-  const fresh = seenMoves ? moves.filter(m => !seenMoves.has(m.id) && Date.now() - m.t < 120000) : [];
-  seenMoves = new Set(moves.map(m => m.id));
-  const show = moves.slice(0, 6);
-  $('#recent').innerHTML = show.length
-    ? show.map((m, i) => {
-        const nm = SHOW_NAMES ? nameOf(m.k, recs[m.k]) : 'Nuovo ingresso';
-        const sub = SHOW_NAMES ? (recs[m.k].v || subs[m.k] || '') : '';
-        return `<li class="${i === 0 && Date.now() - m.t < 60000 ? 'new' : ''}"><div class="av">${SHOW_NAMES ? esc(initials(nm)) : '✓'}</div>
-          <div class="who"><b>${esc(nm)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div><time>${fmt(m.t)}</time></li>`;
-      }).join('')
-    : '<li class="empty">Nessun ingresso ancora · si parte! 🏁</li>';
-  if (fresh.length && SHOW_NAMES) welcome(nameOf(fresh[0].k, recs[fresh[0].k]));
+  renderFeed(keys);
+  renderArea(entered);
+}
 
-  // grafico: linea del tempo continua dal primo ingresso a adesso
+/* ───── CONTAGIRI (SVG) ───── */
+const GC = { cx: 150, cy: 150, r: 112, a0: -125, a1: 125 };
+const pol = (a, r) => { const t = a * Math.PI / 180; return [GC.cx + r * Math.sin(t), GC.cy - r * Math.cos(t)]; };
+function arc(a, b, r) {
+  const [x1, y1] = pol(a, r), [x2, y2] = pol(b, r);
+  return `M${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${b - a > 180 ? 1 : 0} 1 ${x2.toFixed(1)},${y2.toFixed(1)}`;
+}
+function drawGauge(f, max, redline, lvl) {
+  const sig = max + '|' + redline;
+  const span = GC.a1 - GC.a0;
+  if (sig !== gaugeSig) {
+    gaugeSig = sig;
+    $('#arcBg').setAttribute('d', arc(GC.a0, GC.a1, GC.r));
+    $('#arcRed').setAttribute('d', redline ? arc(GC.a0 + span * 0.9, GC.a1, GC.r) : '');
+    const v = $('#arcVal'); v.setAttribute('d', arc(GC.a0, GC.a1, GC.r));
+    const len = v.getTotalLength(); v.style.strokeDasharray = len; v.style.strokeDashoffset = len; v.dataset.len = len;
+    let t = '';
+    for (let i = 0; i <= 40; i++) {
+      const a = GC.a0 + span * i / 40, mj = i % 5 === 0, red = redline && i >= 36;
+      const mjr = i % 10 === 0;
+      const [x1, y1] = pol(a, GC.r - 13), [x2, y2] = pol(a, GC.r - (mjr ? 30 : mj ? 24 : 19));
+      t += `<line class="tick${mj ? ' mj' : ''}${red ? ' red' : ''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+      if (mjr) { const [lx, ly] = pol(a, GC.r + 20); t += `<text class="num${red || (redline && i === 40) ? ' red' : ''}" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}">${Math.round(max * i / 40)}${redline ? '' : '%'}</text>`; }
+    }
+    $('#ticks').innerHTML = t;
+  }
+  const v = $('#arcVal'), len = +v.dataset.len;
+  requestAnimationFrame(() => { v.style.strokeDashoffset = len * (1 - f); });
+  v.setAttribute('stroke', redline && lvl >= 2 ? (lvl === 3 ? '#ff4d4d' : '#ff8a3d') : redline && lvl === 1 ? '#ffb02e' : 'url(#gGrad)');
+  $('#needle').style.transform = `rotate(${GC.a0 + span * f}deg)`;
+}
+
+/* ───── GRAFICO AD AREA (SVG) ───── */
+function renderArea(entered) {
+  const box = $('#area');
   const buckets = {};
   const slot = t => { const d = new Date(t); d.setMinutes(Math.floor(d.getMinutes() / 15) * 15, 0, 0); return d.getTime(); };
   entered.forEach(k => { const s = slot(recs[k].t); buckets[s] = (buckets[s] || 0) + 1; });
   const slots = Object.keys(buckets).map(Number).sort((a, b) => a - b);
-  if (!slots.length) { $('#chart').innerHTML = '<p class="empty">Il grafico compare al primo ingresso.</p>'; set('#peak', ''); return; }
+  if (!slots.length) { if (chartSig !== 'empty') { chartSig = 'empty'; box.innerHTML = '<p class="empty">Il grafico compare al primo ingresso. 🏁</p>'; $('#peak').textContent = ''; } return; }
   const line = [];
-  for (let s = slots[0]; s <= Math.max(slots[slots.length - 1], slot(Date.now())); s += 15 * 60000) line.push(s);
-  const view = line.slice(-28);
-  const max = Math.max(...view.map(s => buckets[s] || 0), 1);
-  const peak = view.reduce((b, s) => ((buckets[s] || 0) > (buckets[b] || 0) ? s : b), view[0]);
-  const hm = s => { const d = new Date(s); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
-  $('#chart').innerHTML = view.map((s, i) => {
-    const v = buckets[s] || 0;
-    const label = view.length <= 14 || i % 2 === 0 || s === peak ? hm(s) : '';
-    return `<div class="c"><span class="v">${v || ''}</span><div class="b${!v ? ' z' : s === peak ? ' p' : ''}" style="height:${v ? Math.max(6, Math.round(v / max * 100)) : 3}%"></div><span class="l">${label}</span></div>`;
-  }).join('');
-  $('#peak').innerHTML = buckets[peak] ? `Punta: <b>${hm(peak)}</b> · ${buckets[peak]} ingressi` : '';
+  const startS = slots[0] - 15 * 60000;
+  for (let s = startS; s <= Math.max(slots[slots.length - 1], slot(Date.now())); s += 15 * 60000) line.push(s);
+  const view = line.slice(-24);
+  const sig = view.map(s => s + ':' + (buckets[s] || 0)).join() + '|' + box.clientWidth + 'x' + box.clientHeight;
+  if (sig === chartSig) return;
+  chartSig = sig;
+  const vals = view.map(s => buckets[s] || 0), max = Math.max(...vals, 1);
+  const W = 1000, H = 300, n = view.length;
+  const pts = vals.map((v, i) => [n === 1 ? W / 2 : i / (n - 1) * W, H - v / max * (H * 0.82)]);
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, Math.min(H, p1[1] + (p2[1] - p0[1]) / 6)];
+    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, Math.min(H, p2[1] - (p3[1] - p1[1]) / 6)];
+    d += ` C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  const pk = vals.indexOf(Math.max(...vals));
+  const hm = s => { const t = new Date(s); return `${pad(t.getHours())}:${pad(t.getMinutes())}`; };
+  const every = Math.ceil(n / 7);
+  box.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="aFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#2ee07f" stop-opacity=".45"/><stop offset="1" stop-color="#2ee07f" stop-opacity="0"/></linearGradient>
+        <linearGradient id="aLine" x1="0" x2="1"><stop offset="0" stop-color="#d9dce0"/><stop offset="1" stop-color="#2ee07f"/></linearGradient>
+      </defs>
+      ${[0.25, 0.5, 0.75].map(y => `<line x1="0" x2="${W}" y1="${H * y}" y2="${H * y}" stroke="rgba(255,255,255,.06)" stroke-dasharray="6 8" vector-effect="non-scaling-stroke"/>`).join('')}
+      <path d="${d} L${W},${H} L0,${H} Z" fill="url(#aFill)"/>
+      <path d="${d}" fill="none" stroke="url(#aLine)" stroke-width="3" vector-effect="non-scaling-stroke" style="filter:drop-shadow(0 0 6px rgba(46,224,127,.7))"/>
+    </svg>
+    <div class="dot"></div>
+    <div class="xl">${view.map((s, i) => (i % every === 0 || i === pk) ? `<span style="left:${pts[i][0] / W * 100}%">${hm(s)}</span>` : '').join('')}</div>`;
+  const svgH = box.querySelector('svg').getBoundingClientRect().height;
+  const dot = box.querySelector('.dot');
+  dot.style.left = (pts[pk][0] / W * 100) + '%';
+  dot.style.top = (pts[pk][1] / H * svgH) + 'px';
+  dot.style.transform = 'translate(-50%,-50%)';
+  $('#peak').innerHTML = `Punta <b>${hm(view[pk])}</b> · ${vals[pk]}`;
+}
+window.addEventListener('resize', () => { chartSig = ''; render(); });
+
+/* ───── ATTIVITÀ LIVE ─────
+   Aggiunge in cima solo le righe nuove, senza ridisegnare tutto (niente sfarfallio). */
+const FEED_MAX = 12;
+let feedIds = [], feedInit = false;
+function feedEvents(keys) {
+  const ev = [];
+  keys.forEach(k => {
+    const r = recs[k], log = r.l || [];
+    let wasIn = false;
+    log.forEach((e, i) => {
+      let type = e[1];
+      if (type === 'i') { type = r.a && i === 0 ? 'a' : wasIn ? 'r' : 'i'; wasIn = true; }
+      if (type === 'x') wasIn = false;
+      ev.push({ id: k + '|' + e[0] + '|' + e[1], k, t: e[0], type, by: e[2] || r.d || '' });
+    });
+  });
+  return ev.sort((a, b) => b.t - a.t);
+}
+const LABEL = { i: 'è entrato', r: 'è rientrato', a: 'aggiunto in loco', o: 'è uscito', x: 'ingresso annullato' };
+const ICON = { i: '✓', r: '↩', a: '＋', o: '↗', x: '✕' };
+function feedItem(e) {
+  const r = recs[e.k];
+  const li = document.createElement('li');
+  li.dataset.id = e.id; li.dataset.t = e.t;
+  li.className = 't-' + e.type;
+  const nm = SHOW_NAMES ? nameOf(e.k, r) : ({ i: 'Ingresso', r: 'Rientro', a: 'Nuovo iscritto', o: 'Uscita', x: 'Annullato' })[e.type];
+  const veh = SHOW_NAMES ? (r.v || subs[e.k] || '') : '';
+  const sub = [SHOW_NAMES ? `<em>${LABEL[e.type]}</em>` : '', e.by ? `<span class="op">da ${esc(e.by)}</span>` : '', veh ? esc(veh) : ''].filter(Boolean).join(' · ');
+  li.innerHTML = `<div class="ic">${ICON[e.type]}</div><div class="who"><b>${esc(nm)}</b>${sub ? `<small>${sub}</small>` : ''}</div><time>${fmt(e.t)}</time>`;
+  return li;
+}
+function renderFeed(keys) {
+  const ul = $('#recent');
+  const ev = feedEvents(keys).slice(0, FEED_MAX);
+  const ids = ev.map(e => e.id);
+  const first = !feedInit;
+  if (ids.join() !== feedIds.join()) {
+    if (!ev.length) ul.innerHTML = '<li class="empty">Nessun movimento ancora · si parte! 🏁</li>';
+    else {
+      ul.querySelector('.empty')?.remove();
+      const existing = new Map([...ul.querySelectorAll('li[data-id]')].map(li => [li.dataset.id, li]));
+      let welcomed = false;
+      ev.forEach((e, i) => {
+        let li = existing.get(e.id);
+        if (!li) {
+          li = feedItem(e);
+          if (!first) {
+            li.classList.add('enter');
+            if (!welcomed && SHOW_NAMES && 'iar'.includes(e.type) && Date.now() - e.t < 120000) { welcome(e); welcomed = true; }
+          }
+        }
+        if (ul.children[i] !== li) ul.insertBefore(li, ul.children[i] || null);
+      });
+      existing.forEach((li, id) => { if (!ids.includes(id)) li.remove(); });
+    }
+    feedIds = ids;
+  }
+  feedInit = true;
+  ul.querySelectorAll('li[data-id]').forEach(li => li.classList.toggle('new', Date.now() - li.dataset.t < 60000));
 }
 
+/* ───── BENVENUTO ───── */
 let welTimer;
-function welcome(name) {
-  $('#welName').textContent = name;
-  const w = $('#welcome'); w.classList.add('show');
-  clearTimeout(welTimer); welTimer = setTimeout(() => w.classList.remove('show'), 4500);
+function welcome(e) {
+  const r = recs[e.k];
+  $('#welLbl').textContent = e.type === 'r' ? 'Bentornato' : e.type === 'a' ? 'Benvenuto · iscritto in loco' : 'Benvenuto';
+  $('#welName').textContent = nameOf(e.k, r);
+  $('#welSub').textContent = r.v || subs[e.k] || '';
+  const w = $('#welcome');
+  w.classList.remove('show'); void w.offsetWidth; w.classList.add('show');
+  clearTimeout(welTimer); welTimer = setTimeout(() => w.classList.remove('show'), 4200);
 }
 
+/* ───── ORA, AGGIORNAMENTO, SCHERMO INTERO ───── */
 setInterval(() => {
   const d = new Date();
   $('#clock').innerHTML = `${pad(d.getHours())}:${pad(d.getMinutes())}<small>${pad(d.getSeconds())}</small>`;
   $('#upd').textContent = lastOk ? `Aggiornato alle ${new Date(lastOk).toLocaleTimeString('it-IT')}` : 'In attesa dei dati…';
 }, 1000);
-setInterval(() => { if (key && document.visibilityState === 'visible') tick(); }, 3000);
+let busy = false;
+setInterval(async () => { if (!key || busy || document.visibilityState !== 'visible') return; busy = true; try { await tick(); } finally { busy = false; } }, 1500);
 $('#fs').addEventListener('click', () => { const d = document.documentElement; (d.requestFullscreen || d.webkitRequestFullscreen)?.call(d); });
 let idleT; document.addEventListener('mousemove', () => { document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => document.body.classList.add('idle'), 3000); });
 async function wake() { try { await navigator.wakeLock?.request('screen'); } catch {} }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { wake(); tick(); } });
 wake();
+drawGauge(0, CAP || 100, !!CAP, 0);
 if (key) tick(true); else showLogin();
 </script>
 </body>
