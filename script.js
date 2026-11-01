@@ -194,11 +194,96 @@ async function sha256(text) {
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 function isAuthed() { try { return sessionStorage.getItem('ptAuthed') === '1'; } catch { return false; } }
-function showAuth(show) {
+function showAuth(show, afterPassword) {
   $('#auth').classList.toggle('hide', !show);
-  if (show) setTimeout(() => $('#authInput').focus(), 350);
-  else { requestWake(); startSync(); if (needsOperator()) setTimeout(askOperator, 400); }
+  if (show) { renderBioBtn(); if (!bioReady()) setTimeout(() => $('#authInput').focus(), 350); }
+  else {
+    requestWake(); startSync();
+    setTimeout(async () => {
+      if (needsOperator()) await askOperator();
+      if (afterPassword) await offerBio();
+    }, 400);
+  }
 }
+function unlock(afterPassword) {
+  try { sessionStorage.setItem('ptAuthed', '1'); } catch {}
+  $('#authInput').value = ''; $('#authError').textContent = '';
+  showAuth(false, afterPassword);
+}
+
+/* ─── FACE ID / IMPRONTA (passkey del telefono) ───
+   Dopo il primo accesso con password si può attivare lo sblocco biometrico:
+   il telefono crea una passkey locale e da lì basta Face ID / Touch ID / impronta. */
+const K_BIO = 'pt4_bio';
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64 = str => Uint8Array.from(atob(str.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+const rand = n => crypto.getRandomValues(new Uint8Array(n));
+const bioId = () => { try { return localStorage.getItem(K_BIO) || ''; } catch { return ''; } };
+const bioReady = () => !!(bioId() && staffKey() && window.PublicKeyCredential);
+async function bioAvailable() {
+  try { return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch { return false; }
+}
+const bioName = () => /iPhone|iPad|Mac/.test(navigator.userAgent) ? 'Face ID' : 'impronta';
+
+async function bioEnable() {
+  try {
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: rand(32),
+      rp: { name: 'PadaniaTuning Check-in' },
+      user: { id: rand(16), name: settings.device || 'staff', displayName: 'Staff PadaniaTuning · ' + (settings.device || '') },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
+      timeout: 60000
+    } });
+    localStorage.setItem(K_BIO, b64(cred.rawId));
+    renderBioSetting();
+    toast(`${bioName()} attivato ✓`);
+    return true;
+  } catch (e) {
+    console.error(e);
+    if (e.name !== 'NotAllowedError') toast(`${bioName()} non disponibile su questo telefono`, 'err');
+    return false;
+  }
+}
+async function bioLogin() {
+  if (!bioReady()) return;
+  try {
+    await navigator.credentials.get({ publicKey: {
+      challenge: rand(32),
+      allowCredentials: [{ type: 'public-key', id: unb64(bioId()) }],
+      userVerification: 'required', timeout: 60000
+    } });
+    unlock(false);
+  } catch (e) {
+    console.error(e);
+    $('#authError').textContent = e.name === 'NotAllowedError' ? 'Annullato. Riprova o usa la password.' : `${bioName()} non riuscito: usa la password.`;
+  }
+}
+function bioDisable() { try { localStorage.removeItem(K_BIO); } catch {} renderBioSetting(); renderBioBtn(); }
+function renderBioBtn() {
+  const b = $('#bioBtn');
+  b.hidden = !bioReady();
+  b.innerHTML = `${bioName() === 'Face ID' ? '🙂' : '👆'} Entra con ${bioName()}`;
+  $('#pwOr').hidden = b.hidden;
+}
+async function renderBioSetting() {
+  const row = $('#bioRow');
+  row.hidden = !(await bioAvailable());
+  $('#bioToggle').checked = !!bioId();
+  $('#bioLabel').textContent = `Accesso con ${bioName()}`;
+}
+async function offerBio() {
+  if (bioId() || !(await bioAvailable())) return;
+  try { if (localStorage.getItem('pt4_bio_no')) return; } catch {}
+  const res = await modal({ title: `${bioName() === 'Face ID' ? '🙂' : '👆'} Usare ${bioName()}?`, text: `Le prossime volte potrai entrare con ${bioName()} invece di scrivere la password.`, ok: 'Attiva', cancel: 'No grazie' });
+  if (res.ok) await bioEnable();
+  else try { localStorage.setItem('pt4_bio_no', '1'); } catch {}
+}
+$('#bioBtn').addEventListener('click', bioLogin);
+$('#bioToggle').addEventListener('change', async e => {
+  if (e.target.checked) { if (!(await bioEnable())) e.target.checked = false; }
+  else { bioDisable(); toast(`${bioName()} disattivato`); }
+});
 $('#authForm').addEventListener('submit', async e => {
   e.preventDefault();
   const input = $('#authInput');
@@ -206,9 +291,8 @@ $('#authForm').addEventListener('submit', async e => {
   try { ok = (await sha256(input.value)) === PW_HASH; }
   catch { $('#authError').textContent = "Apri l'app dal link https per accedere."; return; }
   if (ok) {
-    try { sessionStorage.setItem('ptAuthed', '1'); localStorage.setItem(K_KEY, input.value); } catch {}
-    input.value = ''; $('#authError').textContent = '';
-    showAuth(false);
+    try { localStorage.setItem(K_KEY, input.value); } catch {}
+    unlock(true);
   } else {
     $('#authError').textContent = 'Password errata, riprova.';
     const card = $('#authForm'); card.classList.add('shake');
@@ -1337,6 +1421,7 @@ recs = load(K_RECS, {});
 queue = load(K_QUEUE, {});
 if (list) { mergeAdded(); prepare(); }
 applySettings();
+renderBioSetting();
 renderAll();
 showAuth(!isAuthed());
 

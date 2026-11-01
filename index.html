@@ -34,6 +34,8 @@
     <div class="eyebrow">AREA STAFF</div>
     <h1 class="display">Check-in evento</h1>
     <p>Inserisci la password per accedere.</p>
+    <button type="button" id="bioBtn" class="btn btn-chrome btn-block bio-btn" hidden>🙂 Entra con Face ID</button>
+    <div class="pw-or" id="pwOr" hidden><span>oppure con la password</span></div>
     <div class="pw-field">
       <input type="password" id="authInput" placeholder="Password" autocomplete="current-password" enterkeyhint="go">
       <button type="button" id="pwToggle" class="pw-toggle" aria-label="Mostra password">👁</button>
@@ -205,6 +207,8 @@
     <div class="menu">
       <button class="menu-item danger" data-action="resetCheckins"><span class="mi-ico">🔄</span><span><b>Azzera check-in</b><small>Tiene la lista · vale per tutti i telefoni collegati</small></span></button>
       <button class="menu-item danger" data-action="clearAll"><span class="mi-ico">🗑</span><span><b>Cancella dati dal telefono</b><small>Non tocca il Foglio Google</small></span></button>
+      <div class="menu-item static" id="bioRow" hidden><span class="mi-ico">🙂</span><span><b id="bioLabel">Accesso con Face ID</b><small>Entra senza scrivere la password</small></span>
+        <label class="switch"><input type="checkbox" id="bioToggle"><i></i></label></div>
       <button class="menu-item" data-action="logout"><span class="mi-ico">🔒</span><span><b>Blocca app</b><small>Richiede di nuovo la password</small></span></button>
     </div>
 
