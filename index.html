@@ -144,6 +144,10 @@
       <div class="eyebrow" id="catTitle">PER STATO</div>
       <ul class="cat-list" id="catList"></ul>
     </div>
+    <div class="card" id="opCard" hidden>
+      <div class="eyebrow">INGRESSI PER OPERATORE</div>
+      <ul class="cat-list" id="opList"></ul>
+    </div>
     <div class="card">
       <div class="eyebrow">ULTIMI MOVIMENTI</div>
       <ul class="recent" id="recent"></ul>
@@ -168,7 +172,7 @@
       <div class="menu-item static"><span class="mi-ico">🔁</span><span><b>Sincronizza tra telefoni</b><small>Tutti vedono gli stessi check-in</small></span>
         <label class="switch"><input type="checkbox" id="syncToggle"><i></i></label></div>
       <button class="menu-item" data-action="syncNow"><span class="mi-ico">⚡</span><span><b>Sincronizza adesso</b><small id="lastSyncTxt">Mai sincronizzato</small></span></button>
-      <button class="menu-item" data-action="deviceName"><span class="mi-ico">📱</span><span><b>Nome di questo telefono</b><small id="deviceTxt">—</small></span></button>
+      <button class="menu-item" data-action="deviceName"><span class="mi-ico">📱</span><span><b>Il tuo nome (operatore)</b><small id="deviceTxt">—</small></span></button>
       <button class="menu-item" data-action="scriptUrl"><span class="mi-ico">🔗</span><span><b>Indirizzo script Google</b><small>Avanzato: cambialo solo se rifai lo script</small></span></button>
     </div>
 
@@ -202,18 +206,86 @@
 
     <details class="guide">
       <summary>📖 Come funziona</summary>
+
+      <h4>🚀 Prima dell'evento</h4>
       <ol>
-        <li><b>Scarica gli iscritti dal sito</b> (serve internet) oppure carica un Excel/CSV.</li>
-        <li>Con <b>Sincronizza tra telefoni</b> attivo, tutti i telefoni dello staff vedono gli stessi ingressi. Se manca il campo, l'app continua a funzionare e invia tutto appena torna la connessione.</li>
-        <li><b>Scansiona QR</b>: il QR della mail di conferma contiene la targa. Lo scanner resta aperto per più persone di fila.</li>
-        <li><b>Tocca il pulsante ✓</b> per registrare l'ingresso. Su chi è già dentro puoi segnare l'<b>uscita</b>; al rientro basta un altro tocco.</li>
-        <li><b>Tocca la scheda</b> per vedere tutti i dati della persona e lo storico.</li>
-        <li>Se c'è la colonna <b>Stato</b>, chi non è “Selezionato” viene segnalato prima dell'ingresso.</li>
-        <li><b>＋</b> aggiunge chi si iscrive sul posto.</li>
-        <li>A fine evento: <b>Esporta Excel</b> o <b>Riepilogo PDF</b>.</li>
+        <li><b>Installa l'app</b>: apri il link dal telefono e fai <i>Condividi → Aggiungi a Home</i>. Si apre a tutto schermo come un'app vera.</li>
+        <li><b>Accedi</b> con la password dello staff e scrivi <b>il tuo nome</b>: verrà firmato su ogni ingresso e uscita che registri. Puoi cambiarlo in <i>Strumenti → Il tuo nome</i>.</li>
+        <li><b>Scarica gli iscritti dal sito</b> (serve internet): arrivano dal Foglio Google delle iscrizioni. In alternativa puoi caricare un file Excel o CSV.</li>
+        <li>Fallo su <b>ogni telefono dello staff</b>: la sincronizzazione si attiva da sola.</li>
       </ol>
+
+      <h4>✓ Far entrare le persone</h4>
+      <ul>
+        <li><b>Scansiona QR</b>: il QR della mail di conferma contiene la targa. Lo scanner resta aperto, così passano più persone di fila, e registra anche <b>con quale auto</b> è entrato chi ne ha più di una.</li>
+        <li>Lo scanner ti avvisa con colore, suono e vibrazione: <span class="g-ok">verde</span> = entrato, <span class="g-warn">arancione</span> = già dentro o da controllare, <span class="g-bad">rosso</span> = non trovato o scartato.</li>
+        <li><b>Cerca</b> per nome, cognome, targa (anche senza spazi: “ab123cd”), email o iniziali (“mr” = Mario Rossi). Con 🎙 puoi dettare il nome.</li>
+        <li>Tocca il pulsante <b>✓</b> sulla persona per registrare l'ingresso. Dopo ogni ingresso compare <b>Annulla</b> per qualche secondo, se hai sbagliato persona.</li>
+        <li><b>＋</b> aggiunge chi si iscrive direttamente all'ingresso: compare con il tag “In loco” anche sugli altri telefoni.</li>
+      </ul>
+
+      <h4>🚦 Stato delle iscrizioni</h4>
+      <ul>
+        <li>Lo <b>Stato</b> del Foglio Google è colorato su ogni scheda: <span class="g-ok">Selezionato</span>, <span class="g-warn">Da valutare</span>, <span class="g-bad">Scartato</span>.</li>
+        <li>Chi non è selezionato <b>non entra in automatico</b>: l'app chiede conferma (“Fai entrare comunque”).</li>
+        <li>La lista si riaggiorna da sola ogni 5 minuti: se cambi lo Stato nel Foglio, l'app lo vede.</li>
+      </ul>
+
+      <h4>↗ Uscite e rientri</h4>
+      <ul>
+        <li>Su chi è già dentro, il pulsante ✓ ti fa scegliere <b>Segna uscita</b> oppure <b>Annulla ingresso</b> (se era un errore).</li>
+        <li>Chi è uscito ha il pulsante <b>↩</b>: un tocco e risulta rientrato.</li>
+        <li>Se scansioni qualcuno che è già dentro, puoi segnare l'uscita direttamente dallo scanner.</li>
+      </ul>
+
+      <h4>👤 Scheda persona</h4>
+      <ul>
+        <li><b>Tocca una scheda</b> per vedere tutti i dati dell'iscrizione: telefono, email e Instagram sono cliccabili, le foto si aprono.</li>
+        <li>Lo <b>storico</b> mostra ogni entrata, uscita e annullamento con l'orario e <b>chi l'ha registrato</b>.</li>
+        <li>Da qui aggiungi o modifichi una <b>nota</b> (es. “pass VIP”, “pagamento da verificare”).</li>
+      </ul>
+
+      <h4>🔁 Più telefoni insieme</h4>
+      <ul>
+        <li>Con la sincronizzazione attiva, tutti i telefoni vedono gli stessi ingressi <b>in pochi secondi</b>: nessuno può entrare due volte.</li>
+        <li>In alto vicino al nome della lista: <span class="g-ok">● LIVE</span> = tutto collegato, <span class="g-warn">da inviare</span> = sta mandando le modifiche, <span class="g-bad">Offline</span> = manca la rete.</li>
+        <li><b>Senza campo l'app funziona lo stesso</b>: salva tutto sul telefono e lo invia appena torna internet.</li>
+        <li>Nel Foglio Google, scheda <b>Check-in</b>, trovi in tempo reale chi è entrato, a che ora, chi l'ha fatto entrare e le uscite.</li>
+      </ul>
+
+      <h4>🔎 Filtri e controlli</h4>
+      <ul>
+        <li><b>Tutti / Attesi / Entrati</b> per filtrare la lista; <b>Ordina</b> per cognome, ultimi movimenti o Stato.</li>
+        <li>Il riquadro in alto mostra entrati, <b>dentro ora</b>, usciti e attesi.</li>
+        <li>👯 <b>Doppioni</b>: l'app segnala chi ha la stessa email, telefono o targa di un altro iscritto.</li>
+      </ul>
+
+      <h4>📊 Statistiche e report</h4>
+      <ul>
+        <li><b>Statistiche</b>: ingressi ogni 15 minuti, fascia di punta, ritmo medio, numeri per Stato, <b>ingressi per operatore</b> e ultimi movimenti.</li>
+        <li><b>Esporta Excel</b>: tutti gli iscritti con orari, chi li ha fatti entrare/uscire, auto, note e storico. C'è anche “solo assenti”.</li>
+        <li><b>Riepilogo PDF</b>: da mandare all'organizzazione a fine evento.</li>
+        <li>Sul telefono i file si aprono nel menu Condividi (Salva su File, WhatsApp, Mail…).</li>
+      </ul>
+
+      <h4>⚙️ Impostazioni utili</h4>
+      <ul>
+        <li><b>Testo grande</b> per leggere meglio all'aperto.</li>
+        <li><b>Schermo sempre acceso</b> per non far andare in standby il telefono all'ingresso.</li>
+        <li><b>Suono e vibrazione</b> per il feedback dello scanner.</li>
+        <li><b>Salva / Ripristina backup</b>: una copia di sicurezza di lista, ingressi e note.</li>
+        <li><b>Blocca app</b> richiede di nuovo la password (si richiede da sola anche quando chiudi l'app del tutto).</li>
+      </ul>
+
+      <h4>💡 Consigli per la serata</h4>
+      <ul>
+        <li>Scarica la lista <b>prima</b> di arrivare all'evento, quando hai una buona connessione.</li>
+        <li>Fai una prova con 2 telefoni: un ingresso su uno deve comparire sull'altro.</li>
+        <li>Tieni il telefono in carica o con un powerbank: scanner e schermo acceso consumano.</li>
+        <li>A fine serata: <b>Esporta Excel</b> + <b>Riepilogo PDF</b>.</li>
+      </ul>
     </details>
-    <p class="version">PadaniaTuning Check-in · v4</p>
+    <p class="version">PadaniaTuning Check-in · v4.1</p>
   </main>
 </div>
 

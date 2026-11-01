@@ -1,7 +1,7 @@
 /* Service worker PadaniaTuning Check-in · v3
    - File dell'app: prima la rete (così prendi sempre l'ultima versione), cache se offline
    - Librerie e font: prima la cache (non cambiano), così funziona anche senza campo */
-const CACHE = 'pt-checkin-v4';
+const CACHE = 'pt-checkin-v4-1';
 
 const CORE = [
   './', './index.html', './style.css', './script.js', './manifest.webmanifest',

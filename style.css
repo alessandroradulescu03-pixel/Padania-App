@@ -351,3 +351,13 @@ html.big .app,html.big .tabbar,html.big .sheet,html.big .scanner,html.big #toast
 html.big{--muted:#b3b6bc;--dim:#8e9198}
 .brand-name{white-space:nowrap}
 html.big .topbar{zoom:.88}
+small.by{color:var(--muted);font-size:12px;font-weight:500;margin-left:4px}
+.recent time.x{color:var(--bad)}
+.op-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.guide h4{font-family:var(--display);font-size:18px;letter-spacing:.4px;text-transform:uppercase;margin:20px 0 8px;color:var(--text)}
+.guide h4:first-of-type{margin-top:16px}
+.guide ol,.guide ul{margin:0 0 0 18px;display:grid;gap:8px;color:#c4c7cc;font-size:14px;line-height:1.5}
+.guide ul{list-style:disc}
+.guide li::marker{color:var(--muted)}
+.guide i{color:var(--silver);font-style:normal}
+.g-ok{color:var(--ok);font-weight:700}.g-warn{color:var(--wait);font-weight:700}.g-bad{color:var(--bad);font-weight:700}

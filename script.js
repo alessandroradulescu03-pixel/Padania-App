@@ -16,7 +16,7 @@ const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbweHwQuH_P4c
 
 const K_LIST = 'pt4_list', K_RECS = 'pt4_recs', K_QUEUE = 'pt4_queue', K_SET = 'pt4_settings', K_KEY = 'pt4_key';
 const PAGE = 60;
-const SYNC_EVERY = 12000;
+const SYNC_EVERY = 2500;          // ogni 2,5 s chiede "è cambiato qualcosa?" (risposta leggerissima)
 
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -33,7 +33,7 @@ let dups = {};            // k -> motivo
 let dupGroups = [];
 let filter = 'all', sortMode = 'list', shown = PAGE;
 let lastAction = null, wakeLock = null;
-let sync = { busy: false, last: 0, error: '', timer: null };
+let sync = { busy: false, last: 0, error: '', timer: null, rev: '' };
 
 /* ─── STORAGE ─── */
 function load(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } }
@@ -55,6 +55,10 @@ const pad = n => String(n).padStart(2, '0');
 const dateTag = () => { const d = new Date(); return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`; };
 function hash(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36); }
 const rowByKey = k => list?.rows.find(r => r.k === k);
+const operator = () => settings.device || '';
+const needsOperator = () => !settings.device || /^Telefono [A-Z0-9]{3}$/.test(settings.device);
+const who = (e, x) => (e && e[2]) || (x && x.d) || '';
+function lastEntry(x, type) { const l = (x?.l || []).filter(e => e[1] === type); return l[l.length - 1]; }
 
 /* ─── STATO PERSONA ─── */
 const rec = k => recs[k];
@@ -187,7 +191,7 @@ function isAuthed() { try { return sessionStorage.getItem('ptAuthed') === '1'; }
 function showAuth(show) {
   $('#auth').classList.toggle('hide', !show);
   if (show) setTimeout(() => $('#authInput').focus(), 350);
-  else { requestWake(); startSync(); }
+  else { requestWake(); startSync(); if (needsOperator()) setTimeout(askOperator, 400); }
 }
 $('#authForm').addEventListener('submit', async e => {
   e.preventDefault();
@@ -207,6 +211,20 @@ $('#authForm').addEventListener('submit', async e => {
   }
 });
 $('#pwToggle').addEventListener('click', () => { const i = $('#authInput'); i.type = i.type === 'password' ? 'text' : 'password'; i.focus(); });
+
+/* nome di chi usa il telefono: firma ogni ingresso/uscita */
+async function askOperator(force) {
+  const res = await modal({
+    title: 'Come ti chiami?', text: 'Il tuo nome compare su ogni ingresso e uscita che registri, così si sa chi ha fatto entrare chi.',
+    body: `<label class="field"><input id="opName" value="${needsOperator() ? '' : esc(settings.device)}" maxlength="24" placeholder="Es. Ale, Marco, Cancello 1…" autocomplete="off" autocapitalize="words"></label>`,
+    ok: 'Salva', cancel: force ? 'Annulla' : 'Dopo', focus: '#opName'
+  });
+  if (!res.ok) return;
+  const v = $('#opName').value.trim();
+  if (!v) { toast('Scrivi un nome', 'err'); return askOperator(force); }
+  settings.device = v; saveSettings(); renderOnline();
+  toast(`Ciao ${v} 👋`);
+}
 
 /* =====================================================
    NAVIGAZIONE
@@ -305,7 +323,7 @@ function startSync() {
   clearInterval(sync.timer);
   if (!settings.sync || !isAuthed()) { renderSyncPill(); return; }
   sync.timer = setInterval(() => {
-    if (document.visibilityState !== 'visible') return;
+    if (document.visibilityState !== 'visible' || sync.busy) return;
     // la lista iscritti si riaggiorna da sola ogni 5 minuti (nuove iscrizioni / cambi di Stato)
     if (list?.source === 'online' && Date.now() - list.loadedAt > 5 * 60000 && $('#modal').hidden && $('#scanner').hidden) loadOnline(true);
     else syncNow();
@@ -322,7 +340,9 @@ async function syncNow(manual) {
   sync.busy = true; renderSyncPill();
   const sent = Object.keys(queue).map(k => ({ k, r: recs[k], name: rowByKey(k)?._name || recs[k]?.a?.name || '' })).filter(o => o.r);
   try {
-    const res = await api({ action: 'sync', ops: sent });
+    const res = await api({ action: 'sync', ops: sent, rev: sent.length ? '' : sync.rev });
+    if (res.rev) sync.rev = res.rev;
+    if (res.same) { sync.last = Date.now(); sync.error = ''; return; }
     sent.forEach(o => { if (recs[o.k] && recs[o.k].u === o.r.u) delete queue[o.k]; });
     let changed = false;
     Object.entries(res.recs || {}).forEach(([k, r]) => {
@@ -456,8 +476,8 @@ function personHTML(r, tokens = []) {
   const inside = isInside(r.k), out = isOut(r.k);
   const cc = catClass(r._cat);
   const tags = [
-    inside ? `<span class="tag ok">✓ Dentro dalle ${fmtTime(lastIn(x))}</span>` : '',
-    out ? `<span class="tag out">↗ Uscito ${fmtTime(x.o)}</span>` : '',
+    inside ? `<span class="tag ok">✓ Dentro dalle ${fmtTime(lastIn(x))}${byTxt(lastEntry(x, 'i'), x)}</span>` : '',
+    out ? `<span class="tag out">↗ Uscito ${fmtTime(x.o)}${byTxt(lastEntry(x, 'o'), x)}</span>` : '',
     r._cat ? `<span class="tag cat ${cc}">${esc(r._cat)}</span>` : '',
     r.added ? `<span class="tag new">In loco</span>` : '',
     dups[r.k] ? `<span class="tag dup">👯 Doppione?</span>` : '',
@@ -473,6 +493,7 @@ function personHTML(r, tokens = []) {
     <button class="check" data-act="check" aria-label="${inside ? 'Uscita o annulla' : out ? 'Rientro' : 'Registra ingresso'}">${out ? '↩' : '✓'}</button>
   </li>`;
 }
+function byTxt(e, x) { const w = who(e, x); return w ? ` · ${esc(w)}` : ''; }
 function lastIn(x) { const ins = (x.l || []).filter(e => e[1] === 'i'); return ins.length ? ins[ins.length - 1][0] : x.t; }
 
 function renderList() {
@@ -511,12 +532,12 @@ const base = k => JSON.parse(JSON.stringify(recs[k] || { t: 0, o: 0, n: '', v: '
 function doIn(k, via) {
   const r = base(k), now = Date.now();
   if (!r.t) r.t = now;
-  r.o = 0; (r.l ||= []).push([now, 'i']);
+  r.o = 0; (r.l ||= []).push([now, 'i', operator()]);
   if (via) r.v = via;
   touch(k, r);
 }
-function doOut(k) { const r = base(k), now = Date.now(); r.o = now; (r.l ||= []).push([now, 'o']); touch(k, r); }
-function doCancel(k) { const r = base(k); r.t = 0; r.o = 0; r.l = []; r.v = ''; touch(k, r); }
+function doOut(k) { const r = base(k), now = Date.now(); r.o = now; (r.l ||= []).push([now, 'o', operator()]); touch(k, r); }
+function doCancel(k) { const r = base(k); r.t = 0; r.o = 0; r.v = ''; (r.l ||= []).push([Date.now(), 'x', operator()]); touch(k, r); }
 function doNote(k, text) { const r = base(k); r.n = text; touch(k, r); }
 
 function undo() {
@@ -543,7 +564,7 @@ async function quickAction(k) {
   const r = rowByKey(k);
   if (!r) return;
   if (isInside(k)) {
-    const res = await choose(r._name, `Dentro dalle ${fmtTime(lastIn(recs[k]))}`, [
+    const res = await choose(r._name, `Dentro dalle ${fmtTime(lastIn(recs[k]))}${who(lastEntry(recs[k], 'i'), recs[k]) ? ' · fatto entrare da ' + who(lastEntry(recs[k], 'i'), recs[k]) : ''}`, [
       { id: 'out', label: '↗ Segna uscita' },
       { id: 'cancel', label: '✕ Annulla ingresso (errore)', cls: 'danger' }
     ]);
@@ -593,9 +614,9 @@ async function openDetail(k) {
   const r = rowByKey(k); if (!r) return;
   const x = recs[k] || {};
   const inside = isInside(k), out = isOut(k);
-  const status = inside ? `<span class="tag ok">✓ Dentro dalle ${fmtTime(lastIn(x))}</span>` : out ? `<span class="tag out">↗ Uscito alle ${fmtTime(x.o)}</span>` : '<span class="tag">Non ancora entrato</span>';
+  const status = inside ? `<span class="tag ok">✓ Dentro dalle ${fmtTime(lastIn(x))}${byTxt(lastEntry(x, 'i'), x)}</span>` : out ? `<span class="tag out">↗ Uscito alle ${fmtTime(x.o)}${byTxt(lastEntry(x, 'o'), x)}</span>` : '<span class="tag">Non ancora entrato</span>';
   const fields = list.headers.map((h, i) => [h, r.c[i]]).filter(([, v]) => String(v).trim());
-  const log = (x.l || []).slice().reverse().map(([t, ty]) => `<li><span>${ty === 'i' ? '✓ Entrata' : '↗ Uscita'}</span><time>${fmtTime(t)}</time></li>`).join('');
+  const log = (x.l || []).slice().reverse().map(e => `<li><span>${e[1] === 'i' ? '✓ Entrata' : e[1] === 'o' ? '↗ Uscita' : '✕ Annullato'}${who(e, x) ? ` <small class="by">da ${esc(who(e, x))}</small>` : ''}</span><time class="${e[1] === 'o' ? 'o' : e[1] === 'x' ? 'x' : ''}">${fmtTime(e[0])}</time></li>`).join('');
   const btns = inside
     ? `<button class="btn btn-dark" data-d="out">↗ Segna uscita</button><button class="btn btn-ghost danger-txt" data-d="cancel">Annulla ingresso</button>`
     : `<button class="btn btn-chrome" data-d="in">${out ? '↩ Rientro' : '✓ Registra ingresso'}</button>`;
@@ -607,7 +628,6 @@ async function openDetail(k) {
       <dl>${fields.map(([h, v]) => `<dt>${esc(h)}</dt><dd>${fieldValue(h, v)}</dd>`).join('')}</dl>
       <div class="d-note"><span>Nota</span><p>${x.n ? esc(x.n) : '<i>Nessuna nota</i>'}</p><button class="link-btn" data-d="note">✏️ ${x.n ? 'Modifica' : 'Aggiungi'} nota</button></div>
       ${log ? `<div class="d-log"><span>Storico</span><ul class="recent">${log}</ul></div>` : ''}
-      ${x.d ? `<div class="d-dev">Ultima modifica da: ${esc(x.d)}</div>` : ''}
       <div class="d-actions">${btns}</div>
     </div>`,
     single: true, ok: 'Chiudi',
@@ -658,7 +678,7 @@ $('#addBtn').addEventListener('click', async () => {
   const now = Date.now();
   recs[k] = { t: 0, o: 0, n: '', v: '', l: [], a: { c, name: (nome + ' ' + cognome).trim() } };
   mergeAdded(); prepare();
-  const r = base(k); r.t = now; r.l = [[now, 'i']]; r.n = $('#addNote').value.trim();
+  const r = base(k); r.t = now; r.l = [[now, 'i', operator()]]; r.n = $('#addNote').value.trim();
   touch(k, r);
   feedback('ok');
   renderAll();
@@ -794,7 +814,7 @@ function onScan(text) {
 
   if (isInside(r.k)) {
     feedback('warn');
-    setScanResult('warn', `<b>${esc(r._name)}</b>Già dentro dalle ${fmtTime(lastIn(recs[r.k]))}`, '⚠️');
+    setScanResult('warn', `<b>${esc(r._name)}</b>Già dentro dalle ${fmtTime(lastIn(recs[r.k]))}${who(lastEntry(recs[r.k], 'i'), recs[r.k]) ? ' · fatto entrare da ' + esc(who(lastEntry(recs[r.k], 'i'), recs[r.k])) : ''}`, '⚠️');
     scanActions([{ label: '↗ Segna uscita', fn: () => { doOut(r.k); setScanResult('', `<b>${esc(r._name)}</b>Uscita registrata`, '↗'); renderCounts(); } }]);
     return;
   }
@@ -863,9 +883,13 @@ function statsData() {
   const cats = {};
   if (cols.cat >= 0 && list) list.rows.forEach(r => { const v = r._cat || '—'; cats[v] ||= { tot: 0, in: 0 }; cats[v].tot++; if (everIn(r.k)) cats[v].in++; });
   const moves = [];
-  if (list) list.rows.forEach(r => (recs[r.k]?.l || []).forEach(([t, ty]) => moves.push({ r, t, ty })));
+  const ops = {};
+  if (list) list.rows.forEach(r => (recs[r.k]?.l || []).forEach(e => {
+    moves.push({ r, t: e[0], ty: e[1], by: who(e, recs[r.k]) });
+    if (e[1] === 'i') { const w = who(e, recs[r.k]) || '—'; ops[w] = (ops[w] || 0) + 1; }
+  }));
   moves.sort((a, b) => b.t - a.t);
-  return { c, entries, buckets, keys, peak, rate, cats, moves,
+  return { c, entries, buckets, keys, peak, rate, cats, moves, ops,
     first: entries.length ? entries[0].t : null, last: entries.length ? entries[entries.length - 1].t : null,
     notes: list ? list.rows.filter(r => recs[r.k]?.n).length : 0, added: list ? list.rows.filter(r => r.added).length : 0 };
 }
@@ -889,9 +913,13 @@ function renderStats() {
     $('#catList').innerHTML = catEntries.map(([v, x]) => `<li><span class="tag cat ${catClass(v)}">${esc(v)}</span><span class="cat-bar"><i style="width:${x.tot ? Math.round(x.in / x.tot * 100) : 0}%"></i></span><b>${x.in}/${x.tot}</b></li>`).join('');
   }
   $('#recent').innerHTML = s.moves.length
-    ? s.moves.slice(0, 10).map(m => `<li><span>${m.ty === 'i' ? '✓' : '↗'} ${esc(m.r._name)}</span><time class="${m.ty === 'o' ? 'o' : ''}">${fmtTime(m.t)}</time></li>`).join('')
+    ? s.moves.slice(0, 12).map(m => `<li><span>${m.ty === 'i' ? '✓' : m.ty === 'o' ? '↗' : '✕'} ${esc(m.r._name)}${m.by ? ` <small class="by">da ${esc(m.by)}</small>` : ''}</span><time class="${m.ty === 'o' ? 'o' : m.ty === 'x' ? 'x' : ''}">${fmtTime(m.t)}</time></li>`).join('')
     : '<li class="muted">—</li>';
   $('#sNotes').textContent = s.notes; $('#sAdded').textContent = s.added;
+  const opE = Object.entries(s.ops).sort((a, b) => b[1] - a[1]);
+  $('#opCard').hidden = !opE.length;
+  const opMax = opE.length ? opE[0][1] : 1;
+  $('#opList').innerHTML = opE.map(([w, n]) => `<li><span class="op-name">${esc(w)}</span><span class="cat-bar"><i style="width:${Math.round(n / opMax * 100)}%"></i></span><b>${n}</b></li>`).join('');
 }
 
 /* =====================================================
@@ -941,12 +969,7 @@ const ACTIONS = {
     toast('Dati cancellati', 'warn');
   },
   logout() { try { sessionStorage.removeItem('ptAuthed'); } catch {} clearInterval(sync.timer); showAuth(true); },
-  async deviceName() {
-    const res = await modal({ title: 'Nome telefono', text: 'Compare nello storico e nel Foglio Google (es. "Cancello 1", "Ale").',
-      body: `<label class="field"><input id="devName" value="${esc(settings.device)}" maxlength="24" autocomplete="off"></label>`, ok: 'Salva', focus: '#devName' });
-    if (!res.ok) return;
-    settings.device = $('#devName').value.trim() || settings.device; saveSettings(); renderOnline();
-  },
+  deviceName: () => askOperator(true),
   async scriptUrl() {
     const res = await modal({ title: 'Indirizzo script', text: 'L\'URL dell\'app web Google (finisce con /exec). È lo stesso di assets/js/config.js del sito.',
       body: `<label class="field"><textarea id="urlTxt" rows="3">${esc(settings.url)}</textarea></label><button class="link-btn" id="urlReset" type="button">Ripristina predefinito</button>`, ok: 'Salva',
@@ -987,10 +1010,13 @@ function exportExcel(onlyWaiting) {
   if (!list) return toast('Nessuna lista da esportare', 'err');
   if (typeof XLSX === 'undefined') return toast('Libreria Excel non caricata', 'err');
   const rows = list.rows.filter(r => !onlyWaiting || !everIn(r.k));
-  const aoa = [[...list.headers, 'Entrato', 'Primo ingresso', 'Dentro ora', 'Uscito alle', 'Entrato con', 'Note', 'Aggiunto in loco', 'Telefono staff']];
+  const aoa = [[...list.headers, 'Entrato', 'Primo ingresso', 'Fatto entrare da', 'Dentro ora', 'Ultima uscita', 'Uscita registrata da', 'Entrato con', 'Note', 'Aggiunto in loco', 'Storico']];
   rows.forEach(r => {
     const x = recs[r.k] || {};
-    aoa.push([...r.c, x.t ? 'SI' : 'NO', x.t ? fmtTime(x.t) : '', isInside(r.k) ? 'SI' : (x.t ? 'NO' : ''), x.o ? fmtTime(x.o) : '', x.v || '', x.n || '', r.added ? 'SI' : '', x.d || '']);
+    const firstIn = (x.l || []).find(e => e[1] === 'i'), lastOut = lastEntry(x, 'o');
+    const storico = (x.l || []).map(e => `${fmtTime(e[0])} ${e[1] === 'i' ? 'entrata' : e[1] === 'o' ? 'uscita' : 'annullato'}${who(e, x) ? ' (' + who(e, x) + ')' : ''}`).join(' · ');
+    aoa.push([...r.c, x.t ? 'SI' : 'NO', x.t ? fmtTime(x.t) : '', x.t ? who(firstIn, x) : '', isInside(r.k) ? 'SI' : (x.t ? 'NO' : ''),
+      x.o ? fmtTime(x.o) : '', x.o ? who(lastOut, x) : '', x.v || '', x.n || '', r.added ? 'SI' : '', storico]);
   });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = aoa[0].map((_, i) => ({ wch: Math.min(40, Math.max(10, ...aoa.slice(0, 200).map(r => String(r[i] ?? '').length + 2))) }));
@@ -1066,6 +1092,15 @@ async function exportPDF() {
     y += 4;
   }
 
+  // per operatore
+  const opE = Object.entries(s.ops).sort((a, b) => b[1] - a[1]);
+  if (opE.length) {
+    need(12 + opE.length * 6);
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(17, 17, 20); doc.text('Ingressi registrati per operatore', M, y); doc.setFont('helvetica', 'normal'); y += 6;
+    opE.forEach(([w, n]) => { doc.setFontSize(10); doc.text(w, M, y); doc.text(String(n), W - M, y, { align: 'right' }); y += 6; });
+    y += 4;
+  }
+
   // elenco entrati
   const table = (title, rows, colsDef) => {
     need(20);
@@ -1082,11 +1117,12 @@ async function exportPDF() {
   };
   const entered = s.entries.map(e => e.r);
   if (entered.length) table(`Entrati (${entered.length})`, entered, [
-    { h: 'NOME', x: M, w: 58, v: r => r._name },
-    { h: 'ENTRATO CON / INFO', x: M + 60, w: 62, v: r => recs[r.k].v || r._sub },
-    { h: 'INGRESSO', x: M + 125, w: 18, v: r => fmtTime(recs[r.k].t) },
-    { h: 'USCITA', x: M + 145, w: 18, v: r => recs[r.k].o ? fmtTime(recs[r.k].o) : '' },
-    { h: 'NOTE', x: M + 163, w: 16, v: r => recs[r.k].n ? 'sì' : '' }
+    { h: 'NOME', x: M, w: 52, v: r => r._name },
+    { h: 'ENTRATO CON / INFO', x: M + 54, w: 54, v: r => recs[r.k].v || r._sub },
+    { h: 'INGRESSO', x: M + 110, w: 16, v: r => fmtTime(recs[r.k].t) },
+    { h: 'DA', x: M + 127, w: 22, v: r => who((recs[r.k].l || []).find(e => e[1] === 'i'), recs[r.k]) },
+    { h: 'USCITA', x: M + 151, w: 14, v: r => recs[r.k].o ? fmtTime(recs[r.k].o) : '' },
+    { h: 'DA', x: M + 166, w: 14, v: r => recs[r.k].o ? who(lastEntry(recs[r.k], 'o'), recs[r.k]) : '' }
   ]);
   const noted = list.rows.filter(r => recs[r.k]?.n);
   if (noted.length) table(`Note (${noted.length})`, noted, [
