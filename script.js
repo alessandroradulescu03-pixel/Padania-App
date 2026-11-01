@@ -1,95 +1,179 @@
 /* =====================================================
-   PadaniaTuning Check-in · v3
-   Tutto resta salvato sul telefono (localStorage):
-   lista, check-in, orari e note sopravvivono alla chiusura.
+   PadaniaTuning Check-in · v4
+   - Funziona offline: tutto resta salvato sul telefono
+   - Se collegato allo script Google del sito: scarica gli
+     iscritti e sincronizza i check-in tra più telefoni
    ===================================================== */
 
 /* ─── PASSWORD ───
    Nel codice c'è solo l'impronta SHA-256, non la password in chiaro.
-   Per cambiarla: calcola lo SHA-256 della nuova password e incollalo qui. */
+   La stessa password fa da "chiave staff" per lo script Google
+   (proprietà CHIAVE_STAFF): se la cambi, cambiala in tutti e due i posti. */
 const PW_HASH = '3fc13c35bdb2d6f9146fcd93304ba3c2143d5d017268e17a939f0d315728c8a2';
 
-const K_LIST  = 'pt3_list';
-const K_STATE = 'pt3_state';
-const K_SET   = 'pt3_settings';
-const PAGE    = 60;
+/* Script Google delle iscrizioni (lo stesso di assets/js/config.js del sito) */
+const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbweHwQuH_P4cblhQDbDnI6Ri86qSEqwWyMSCgTRZJ3yFjr5KV_0Q8NpHRUUOVoqZTrjug/exec';
+
+const K_LIST = 'pt4_list', K_RECS = 'pt4_recs', K_QUEUE = 'pt4_queue', K_SET = 'pt4_settings', K_KEY = 'pt4_key';
+const PAGE = 60;
+const SYNC_EVERY = 12000;
 
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
-/* ─── STATO ─── */
-let list     = null;                 // { name, loadedAt, headers, rows:[{k,c,added}] }
-let state    = { in: {}, notes: {} };  // in: {key: timestamp}, notes: {key: testo}
-let settings = { wake: true, sound: true };
-let cols     = { nome: 0, cognome: 1, info: [] };
-let filter   = 'all';
-let sortMode = 'list';
-let shown    = PAGE;
-let lastAction = null;
-let wakeLock = null;
+/* ─── STATO ───
+   recs[k] = { t: primo ingresso, o: uscito alle (0 = dentro), n: nota, v: veicolo,
+               l: storico [[ts,'i'|'o']], u: ultima modifica, d: telefono, a: {c:[...]} se aggiunto in loco } */
+let list = null;          // { name, source, loadedAt, headers, rows:[{k,c,added}] }
+let recs = {};
+let queue = {};
+let settings = { wake: true, sound: true, big: false, sync: false, url: DEFAULT_SCRIPT_URL, device: '' };
+let cols = { nome: 0, cognome: -1, info: [], cat: -1, key: [] };
+let dups = {};            // k -> motivo
+let dupGroups = [];
+let filter = 'all', sortMode = 'list', shown = PAGE;
+let lastAction = null, wakeLock = null;
+let sync = { busy: false, last: 0, error: '', timer: null };
 
-/* ─── STORAGE SICURO ─── */
-function load(key, fallback) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
-  catch { return fallback; }
-}
-function save(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+/* ─── STORAGE ─── */
+function load(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } }
+function save(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); return true; }
   catch (e) { console.error(e); toast('Errore nel salvataggio sul telefono!', 'err'); return false; }
 }
-const saveState = () => save(K_STATE, state);
-const saveList  = () => save(K_LIST, list);
+const saveList = () => save(K_LIST, list && { ...list, rows: list.rows.filter(r => !r.added).map(({ k, c }) => ({ k, c })) });
+const saveRecs = () => { save(K_RECS, recs); save(K_QUEUE, queue); };
+const saveSettings = () => save(K_SET, settings);
+const staffKey = () => { try { return localStorage.getItem(K_KEY) || ''; } catch { return ''; } };
 
 /* ─── UTILS ─── */
 const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
-const esc  = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+const compact = s => norm(s).replace(/[\s\-.]/g, '');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const fmtTime = ts => new Date(ts).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 const pad = n => String(n).padStart(2, '0');
 const dateTag = () => { const d = new Date(); return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`; };
+function hash(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36); }
+const rowByKey = k => list?.rows.find(r => r.k === k);
 
-function hash(str) {               // djb2: chiave stabile per riga
-  let h = 5381;
-  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
-  return h.toString(36);
-}
+/* ─── STATO PERSONA ─── */
+const rec = k => recs[k];
+const everIn = k => !!(recs[k] && recs[k].t);
+const isInside = k => !!(recs[k] && recs[k].t && !recs[k].o);
+const isOut = k => !!(recs[k] && recs[k].t && recs[k].o);
 
-/* ─── COLONNE: riconosce Nome / Cognome / info utili ─── */
+/* =====================================================
+   COLONNE
+   ===================================================== */
 function detectColumns(headers) {
   const h = headers.map(norm);
-  let nome    = h.findIndex(x => /^(nome|name|first ?name)\b/.test(x) && !/cognome/.test(x));
-  let cognome = h.findIndex(x => /(cognome|surname|last ?name)/.test(x));
-  const full  = h.findIndex(x => /(nominativo|nome e cognome|nome completo|full ?name)/.test(x));
+  const find = re => h.findIndex(x => re.test(x));
+  let nome = h.findIndex(x => /^(nome|name|first ?name)\b/.test(x) && !/cognome/.test(x));
+  let cognome = find(/(cognome|surname|last ?name)/);
+  const full = find(/(nominativo|nome e cognome|nome completo|full ?name)/);
   if (full >= 0 && nome < 0) { nome = full; cognome = -1; }
   if (nome < 0 && cognome < 0) { nome = 0; cognome = headers.length > 1 ? 1 : -1; }
   if (nome < 0) { nome = cognome; cognome = -1; }
 
-  const skip = new Set([nome, cognome]);
-  const priority = /(targa|auto|modello|veicolo|macchina|marca|categoria|tipo|biglietto|pass|ticket|club|team)/;
-  const rest = h.map((x, i) => i).filter(i => !skip.has(i) && !/(timestamp|data|privacy|consenso|accetto)/.test(h[i]));
+  const cat = find(/^(stato|status|categoria|tipo|pass|ticket|biglietto)$/);
+  const skip = new Set([nome, cognome, cat]);
+  const boring = /(timestamp|data invio|^data$|privacy|consenso|accetto|^evento$|^foto|modifiche|come ci conosce|n\.? ?veicoli)/;
+  const priority = /(veicolo|targa|auto|modello|macchina|marca|club|team)/;
+  const rest = h.map((x, i) => i).filter(i => !skip.has(i) && !boring.test(h[i]));
   const info = [...rest.filter(i => priority.test(h[i])), ...rest.filter(i => !priority.test(h[i]))];
-  return { nome, cognome, info };
+
+  // colonne che identificano la persona in modo stabile (non cambiano se lo staff modifica lo Stato)
+  const id = find(/^(id|codice|code|n\.? ?iscrizione|numero iscrizione)$/);
+  let key = [];
+  if (id >= 0) key = [id];
+  else {
+    key = [nome, cognome, find(/^e-?mail/), find(/(telefono|cellulare|phone)/), find(/^targa ?1?$/)].filter(i => i >= 0);
+    key = [...new Set(key)];
+    if (key.length < 2) key = headers.map((_, i) => i).filter(i => i !== cat);
+  }
+  return { nome, cognome, info, cat, key };
+}
+
+function buildRows(headers, raw) {
+  cols = detectColumns(headers);
+  const seen = {}, rows = [];
+  raw.forEach(r => {
+    const c = headers.map((_, j) => String(r[j] ?? '').trim());
+    if (!c.some(Boolean)) return;
+    let k = 'p' + hash(cols.key.map(i => compact(c[i])).join('␟'));
+    seen[k] = (seen[k] || 0) + 1;
+    if (seen[k] > 1) k += '-' + seen[k];
+    rows.push({ k, c });
+  });
+  return rows;
+}
+
+/* aggiunge alla lista le persone registrate in loco (anche da altri telefoni) */
+function mergeAdded() {
+  if (!list) return false;
+  let changed = false;
+  Object.entries(recs).forEach(([k, r]) => {
+    if (r.a && r.a.c && !rowByKey(k)) {
+      const c = list.headers.map((_, i) => String(r.a.c[i] ?? ''));
+      list.rows.push({ k, c, added: true }); changed = true;
+    }
+  });
+  return changed;
 }
 
 function prepare() {
   if (!list) return;
   cols = detectColumns(list.headers);
+  const targaCols = list.headers.map((h, i) => /targa/.test(norm(h)) ? i : -1).filter(i => i >= 0);
   list.rows.forEach(r => {
-    r._name = personName(r);
-    r._first = norm(r.c[cols.nome]); r._last = cols.cognome >= 0 ? norm(r.c[cols.cognome]) : '';
+    const n = String(r.c[cols.nome] ?? '').trim();
+    const cg = cols.cognome >= 0 ? String(r.c[cols.cognome] ?? '').trim() : '';
+    r._name = (n + ' ' + cg).trim() || '(senza nome)';
+    r._first = norm(n); r._last = norm(cg);
     r._search = norm(r.c.join(' '));
-    r._compact = r.c.map(x => norm(x).replace(/[\s\-.]/g, ''));   // targhe: "AB 123 CD" = "ab123cd" = "AB-123-CD"
+    r._compact = r.c.map(compact);
     r._initials = norm(r._name).split(' ').filter(Boolean).map(w => w[0]).join('');
     r._sub = cols.info.map(i => String(r.c[i] ?? '').trim()).filter(Boolean).slice(0, 3).join(' · ');
+    r._cat = cols.cat >= 0 ? String(r.c[cols.cat] ?? '').trim() : '';
+    r._plates = targaCols.map(i => compact(r.c[i])).filter(x => x.length >= 4);
   });
+  findDups();
 }
-function personName(r) {
-  const n = String(r.c[cols.nome] ?? '').trim();
-  const c = cols.cognome >= 0 ? String(r.c[cols.cognome] ?? '').trim() : '';
-  return (n + ' ' + c).trim() || '(senza nome)';
+
+function initials(name) { const w = name.split(/\s+/).filter(Boolean); return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '?'; }
+function catClass(v) {
+  const n = norm(v);
+  if (!n) return '';
+  if (/(scartat|rifiutat|annullat|bloccat|^no$)/.test(n)) return 'bad';
+  if (/(valutare|attesa|pending|sospes)/.test(n)) return 'warn';
+  if (/(selezionat|confermat|approvat|accettat|vip|staff|ok|^si$)/.test(n)) return 'good';
+  return '';
 }
-function initials(name) {
-  const w = name.split(/\s+/).filter(Boolean);
-  return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '?';
+
+/* ─── DOPPIONI ─── */
+function findDups() {
+  dups = {}; dupGroups = [];
+  if (!list) return;
+  const h = list.headers.map(norm);
+  const emailC = h.findIndex(x => /^e-?mail/.test(x));
+  const telC = h.findIndex(x => /(telefono|cellulare|phone)/.test(x));
+  const maps = { mail: {}, tel: {}, targa: {} };
+  list.rows.forEach(r => {
+    if (emailC >= 0) { const e = norm(r.c[emailC]); if (e.includes('@')) (maps.mail[e] ||= []).push(r); }
+    if (telC >= 0) { const t = String(r.c[telC]).replace(/\D/g, '').replace(/^0039|^39(?=\d{9,})/, ''); if (t.length >= 6) (maps.tel[t] ||= []).push(r); }
+    [...new Set(r._plates)].forEach(p => (maps.targa[p] ||= []).push(r));
+  });
+  const labels = { mail: 'Stessa email', tel: 'Stesso telefono', targa: 'Stessa targa' };
+  const seenGroup = new Set();
+  Object.entries(maps).forEach(([type, m]) => Object.entries(m).forEach(([val, rows]) => {
+    const uniq = [...new Map(rows.map(r => [r.k, r])).values()];
+    if (uniq.length < 2) return;
+    const sig = uniq.map(r => r.k).sort().join('|');
+    if (seenGroup.has(sig)) return;
+    seenGroup.add(sig);
+    dupGroups.push({ type: labels[type], val, rows: uniq });
+    uniq.forEach(r => { dups[r.k] = dups[r.k] || labels[type]; });
+  }));
 }
 
 /* =====================================================
@@ -103,7 +187,7 @@ function isAuthed() { try { return sessionStorage.getItem('ptAuthed') === '1'; }
 function showAuth(show) {
   $('#auth').classList.toggle('hide', !show);
   if (show) setTimeout(() => $('#authInput').focus(), 350);
-  else requestWake();
+  else { requestWake(); startSync(); }
 }
 $('#authForm').addEventListener('submit', async e => {
   e.preventDefault();
@@ -112,7 +196,7 @@ $('#authForm').addEventListener('submit', async e => {
   try { ok = (await sha256(input.value)) === PW_HASH; }
   catch { $('#authError').textContent = "Apri l'app dal link https per accedere."; return; }
   if (ok) {
-    try { sessionStorage.setItem('ptAuthed', '1'); } catch {}
+    try { sessionStorage.setItem('ptAuthed', '1'); localStorage.setItem(K_KEY, input.value); } catch {}
     input.value = ''; $('#authError').textContent = '';
     showAuth(false);
   } else {
@@ -122,9 +206,7 @@ $('#authForm').addEventListener('submit', async e => {
     input.select();
   }
 });
-$('#pwToggle').addEventListener('click', () => {
-  const i = $('#authInput'); i.type = i.type === 'password' ? 'text' : 'password'; i.focus();
-});
+$('#pwToggle').addEventListener('click', () => { const i = $('#authInput'); i.type = i.type === 'password' ? 'text' : 'password'; i.focus(); });
 
 /* =====================================================
    NAVIGAZIONE
@@ -134,112 +216,201 @@ function showPage(p) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === p));
   window.scrollTo({ top: 0 });
   if (p === 'stats') renderStats();
+  if (p === 'tools') renderOnline();
 }
 $$('.tab').forEach(t => t.addEventListener('click', () => showPage(t.dataset.page)));
 
 /* =====================================================
-   CARICAMENTO LISTA
+   CARICAMENTO LISTA (file / online)
    ===================================================== */
+function setList(name, source, headers, raw, keepUndo) {
+  headers = headers.map(h => String(h ?? '').trim());
+  const width = Math.max(headers.length, ...raw.map(r => r.length));
+  while (headers.length < width) headers.push('Colonna ' + (headers.length + 1));
+  const rows = buildRows(headers, raw);
+  list = { name, source, loadedAt: Date.now(), headers, rows };
+  mergeAdded();
+  prepare();
+  saveList();
+  if (!keepUndo) { shown = PAGE; lastAction = null; }
+  renderAll();
+  return rows.length;
+}
+
 $('#fileInput').addEventListener('change', async e => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
   if (typeof XLSX === 'undefined') { toast('Libreria Excel non caricata: serve connessione al primo avvio', 'err'); return; }
-
   if (list && list.rows.length) {
-    const r = await modal({
-      title: 'Sostituire la lista?',
-      text: `Carichi "${file.name}" al posto di quella attuale. I check-in delle persone presenti in entrambe le liste restano salvati.`,
-      ok: 'Sostituisci'
-    });
+    const r = await modal({ title: 'Sostituire la lista?', text: `Carichi "${file.name}" al posto di quella attuale. I check-in delle persone presenti in entrambe restano.`, ok: 'Sostituisci' });
     if (!r.ok) return;
   }
-
   try {
-    const buf  = await file.arrayBuffer();
-    const wb   = XLSX.read(new Uint8Array(buf), { type: 'array' });
-    const raw  = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' });
+    const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array' });
+    const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' });
     if (!raw || raw.length < 2) { toast('File vuoto: servono intestazione + almeno un iscritto', 'err'); return; }
-
-    const headers = raw[0].map(h => String(h ?? '').trim());
-    const width = Math.max(...raw.map(r => r.length));
-    while (headers.length < width) headers.push('Colonna ' + (headers.length + 1));
-
-    const seen = {};
-    const rows = [];
-    const oldIndexMap = {};                     // per migrare i dati della vecchia versione
-    raw.slice(1).forEach((r, i) => {
-      const c = headers.map((_, j) => String(r[j] ?? '').trim());
-      if (!c.some(Boolean)) return;
-      let k = hash(c.map(norm).join('␟'));
-      seen[k] = (seen[k] || 0) + 1;
-      if (seen[k] > 1) k += '-' + seen[k];
-      oldIndexMap[i + 1] = k;
-      rows.push({ k, c });
-    });
-
-    // tiene anche le persone aggiunte in loco nella lista precedente
-    const added = list ? list.rows.filter(r => r.added) : [];
-    list = { name: file.name, loadedAt: Date.now(), headers, rows: [...rows, ...added] };
-    prepare();
-    saveList();
-    migrateOld(oldIndexMap);
-
-    const kept = list.rows.filter(r => state.in[r.k]).length;
-    shown = PAGE; lastAction = null;
-    renderAll();
-    toast(`${rows.length} iscritti caricati${kept ? ` · ${kept} check-in mantenuti` : ''}`);
-  } catch (err) {
-    console.error(err);
-    toast('File non valido o danneggiato', 'err');
-  }
+    const n = setList(file.name.replace(/\.(xlsx|xls|csv)$/i, ''), 'file', raw[0], raw.slice(1));
+    const kept = list.rows.filter(r => everIn(r.k)).length;
+    toast(`${n} iscritti caricati${kept ? ` · ${kept} già entrati` : ''}`);
+  } catch (err) { console.error(err); toast('File non valido o danneggiato', 'err'); }
 });
 
-/* Importa i check-in salvati dalla versione precedente dell'app (una volta sola) */
-function migrateOld(map) {
+async function loadOnline(silent) {
+  if (!settings.url) { if (!silent) toast('Manca l\'indirizzo dello script', 'err'); return; }
+  if (!silent) toast('Scarico gli iscritti…');
   try {
-    const oldIn = JSON.parse(localStorage.getItem('checkboxState') || 'null');
-    if (!oldIn || Object.keys(state.in).length) return;
-    const oldT = JSON.parse(localStorage.getItem('timestampState') || '{}');
-    const oldN = JSON.parse(localStorage.getItem('notesState') || '{}');
-    let n = 0;
-    Object.keys(oldIn).forEach(id => { const k = map[id]; if (k) { state.in[k] = oldT[id] || Date.now(); n++; } });
-    Object.keys(oldN).forEach(id => { const k = map[id]; if (k) state.notes[k] = oldN[id]; });
-    saveState();
-    ['checkboxState', 'timestampState', 'notesState'].forEach(x => localStorage.removeItem(x));
-    if (n) setTimeout(() => toast(`${n} check-in recuperati dalla versione precedente`), 3000);
-  } catch {}
+    const res = await api({ action: 'list' });
+    if (!res.rows) throw new Error('Risposta senza iscritti');
+    const before = list ? list.rows.length : 0;
+    const n = setList(res.name || 'Iscrizioni', 'online', res.headers, res.rows, silent);
+    if (!settings.sync) { settings.sync = true; saveSettings(); startSync(); }
+    syncNow();
+    if (!silent) toast(`🌐 ${n} iscritti scaricati dal sito`);
+    else if (n > before && before) toast(`🌐 ${n - before} nuovi iscritti`);
+  } catch (err) {
+    console.error(err);
+    if (!silent) toast(apiErrorText(err), 'err');
+    else if (list) list.loadedAt = Date.now();   // riprova tra 5 minuti
+  }
+}
+
+/* =====================================================
+   SINCRONIZZAZIONE (script Google)
+   ===================================================== */
+async function api(body) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const resp = await fetch(settings.url, {
+      method: 'POST', redirect: 'follow', signal: ctrl.signal,
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ ...body, key: staffKey() })
+    });
+    const data = await resp.json();
+    if (data.auth === false) throw Object.assign(new Error('auth'), { auth: true });
+    if (!data.ok) throw new Error(data.error || 'Errore script');
+    return data;
+  } finally { clearTimeout(t); }
+}
+function apiErrorText(err) {
+  if (err.auth) return 'Password non accettata dallo script Google (CHIAVE_STAFF)';
+  if (!navigator.onLine) return 'Nessuna connessione internet';
+  if (err.name === 'AbortError') return 'Lo script non risponde, riprova';
+  if (/azione sconosciuta|CHIAVE_STAFF/i.test(err.message)) return 'Lo script Google va aggiornato: vedi ISTRUZIONI';
+  return 'Collegamento non riuscito: ' + err.message;
+}
+
+function startSync() {
+  clearInterval(sync.timer);
+  if (!settings.sync || !isAuthed()) { renderSyncPill(); return; }
+  sync.timer = setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    // la lista iscritti si riaggiorna da sola ogni 5 minuti (nuove iscrizioni / cambi di Stato)
+    if (list?.source === 'online' && Date.now() - list.loadedAt > 5 * 60000 && $('#modal').hidden && $('#scanner').hidden) loadOnline(true);
+    else syncNow();
+  }, SYNC_EVERY);
+  if (list?.source === 'online' && Date.now() - list.loadedAt > 60000) loadOnline(true); else syncNow();
+}
+
+let syncSoon;
+function scheduleSync() { if (!settings.sync) return renderSyncPill(); clearTimeout(syncSoon); syncSoon = setTimeout(syncNow, 300); renderSyncPill(); }
+
+async function syncNow(manual) {
+  if (!settings.sync || sync.busy) { if (manual && !settings.sync) toast('Attiva prima "Sincronizza tra telefoni"', 'warn'); return; }
+  if (!navigator.onLine) { sync.error = 'offline'; renderSyncPill(); if (manual) toast('Nessuna connessione: i dati verranno inviati appena torna', 'warn'); return; }
+  sync.busy = true; renderSyncPill();
+  const sent = Object.keys(queue).map(k => ({ k, r: recs[k], name: rowByKey(k)?._name || recs[k]?.a?.name || '' })).filter(o => o.r);
+  try {
+    const res = await api({ action: 'sync', ops: sent });
+    sent.forEach(o => { if (recs[o.k] && recs[o.k].u === o.r.u) delete queue[o.k]; });
+    let changed = false;
+    Object.entries(res.recs || {}).forEach(([k, r]) => {
+      if (!r || queue[k]) return;
+      if (!recs[k] || (r.u || 0) > (recs[k].u || 0)) { recs[k] = r; changed = true; }
+    });
+    if (mergeAdded()) { prepare(); changed = true; }
+    saveRecs();
+    sync.last = Date.now(); sync.error = '';
+    if (changed) { renderCounts(); renderListSoft(); }
+    if (manual) toast('Sincronizzato ✓');
+  } catch (err) {
+    console.error(err);
+    sync.error = err.auth ? 'auth' : 'err';
+    if (manual) toast(apiErrorText(err), 'err');
+  } finally {
+    sync.busy = false; renderSyncPill(); renderOnline();
+  }
+}
+window.addEventListener('online', () => { renderSyncPill(); syncNow(); });
+window.addEventListener('offline', renderSyncPill);
+
+function renderSyncPill() {
+  const pill = $('#syncPill');
+  if (!settings.sync) { pill.hidden = true; return; }
+  pill.hidden = false;
+  const pending = Object.keys(queue).length;
+  let cls = 'ok', txt = 'Live';
+  if (!navigator.onLine || sync.error === 'offline') { cls = 'bad'; txt = 'Offline'; }
+  else if (sync.error) { cls = 'bad'; txt = 'Errore'; }
+  else if (pending) { cls = 'warn'; txt = `${pending} da inviare`; }
+  if (pending && cls === 'bad') txt += ` · ${pending}`;
+  pill.className = 'sync-pill ' + cls;
+  pill.textContent = txt;
+}
+
+function renderOnline() {
+  const pending = Object.keys(queue).length;
+  const dot = $('#onlineDot');
+  let title = 'Non collegato', sub = 'Check-in salvati solo su questo telefono', cls = '';
+  if (settings.sync) {
+    if (sync.error === 'auth') { title = 'Password non accettata'; sub = 'Controlla CHIAVE_STAFF nello script Google'; cls = 'bad'; }
+    else if (!navigator.onLine || sync.error === 'offline') { title = 'Offline'; sub = pending ? `${pending} modifiche da inviare appena torna la rete` : 'Riprovo appena torna la rete'; cls = 'bad'; }
+    else if (sync.error) { title = 'Errore di collegamento'; sub = 'Lo script potrebbe non essere aggiornato'; cls = 'bad'; }
+    else { title = 'Collegato · sincronizzazione attiva'; sub = pending ? `${pending} modifiche in invio…` : 'Tutti i telefoni vedono gli stessi check-in'; cls = 'ok'; }
+  }
+  dot.className = cls; $('#onlineTitle').textContent = title; $('#onlineSub').textContent = sub;
+  $('#syncToggle').checked = settings.sync;
+  $('#lastSyncTxt').textContent = sync.last ? `Ultima: ${fmtTime(sync.last)}` : 'Mai sincronizzato';
+  $('#deviceTxt').textContent = settings.device;
 }
 
 /* =====================================================
    RENDER
    ===================================================== */
 function counts() {
-  const tot = list ? list.rows.length : 0;
-  const inN = list ? list.rows.filter(r => state.in[r.k]).length : 0;
-  return { tot, inN, wait: tot - inN, pct: tot ? Math.round(inN / tot * 100) : 0 };
+  const rows = list ? list.rows : [];
+  const tot = rows.length;
+  let inN = 0, inside = 0, out = 0;
+  rows.forEach(r => { if (everIn(r.k)) { inN++; isInside(r.k) ? inside++ : out++; } });
+  return { tot, inN, inside, out, wait: tot - inN, pct: tot ? Math.round(inN / tot * 100) : 0 };
 }
 
 function renderAll() {
   const has = !!(list && list.rows.length);
   $('#welcome').hidden = has;
   $('#dash').hidden = !has;
-  $('#listName').textContent = has ? `${list.name.replace(/\.(xlsx|xls|csv)$/i, '')}` : 'Nessuna lista';
+  $('#listName').textContent = has ? list.name : 'Nessuna lista';
   renderCounts();
+  renderSyncPill();
   if (has) renderList();
 }
 
 function renderCounts() {
   const c = counts();
-  $('#chipIn').textContent = c.inN; $('#chipTot').textContent = c.tot;
-  $('#countIn').textContent = c.inN; $('#countIn2').textContent = c.inN;
-  $('#countTot').textContent = c.tot; $('#countWait').textContent = c.wait;
+  $('#chipIn').textContent = c.inside; $('#chipTot').textContent = c.tot;
+  $('#countIn').textContent = c.inN; $('#countTot').textContent = c.tot;
+  $('#countInside').textContent = c.inside; $('#countOut').textContent = c.out; $('#outWrap').hidden = !c.out;
+  $('#countWait').textContent = c.wait;
   $('#countPct').textContent = c.pct + '%';
   $('#ring').style.setProperty('--p', c.pct);
   $('#barFill').style.width = c.pct + '%';
   $('#fAll').textContent = c.tot; $('#fYes').textContent = c.inN; $('#fNo').textContent = c.wait;
-  $('#scanIn').textContent = c.inN; $('#scanTot').textContent = c.tot;
+  $('#scanIn').textContent = c.inside; $('#scanTot').textContent = c.tot;
   $('#undoBtn').hidden = !lastAction;
+  const nd = dupGroups.length;
+  $('#dupBanner').hidden = !nd;
+  $('#dupBanner').innerHTML = `👯 <b>${nd} ${nd === 1 ? 'possibile doppione' : 'possibili doppioni'}</b> nella lista · Vedi`;
 }
 
 function matches(r, q, tokens) {
@@ -254,24 +425,24 @@ function filteredRows() {
   const q = norm($('#searchInput').value);
   const tokens = q.split(' ').filter(Boolean);
   let rows = list.rows.filter(r => {
-    if (filter === 'yes' && !state.in[r.k]) return false;
-    if (filter === 'no' && state.in[r.k]) return false;
+    if (filter === 'yes' && !everIn(r.k)) return false;
+    if (filter === 'no' && everIn(r.k)) return false;
     return matches(r, q, tokens);
   });
-  if (sortMode === 'az')     rows = [...rows].sort((a, b) => (a._last || a._first).localeCompare(b._last || b._first) || a._first.localeCompare(b._first));
-  if (sortMode === 'recent') rows = [...rows].sort((a, b) => (state.in[b.k] || 0) - (state.in[a.k] || 0));
+  const lastMove = k => { const r = recs[k]; return r ? Math.max(r.t || 0, r.o || 0) : 0; };
+  if (sortMode === 'az') rows = [...rows].sort((a, b) => (a._last || a._first).localeCompare(b._last || b._first) || a._first.localeCompare(b._first));
+  if (sortMode === 'recent') rows = [...rows].sort((a, b) => lastMove(b.k) - lastMove(a.k));
+  if (sortMode === 'cat') rows = [...rows].sort((a, b) => a._cat.localeCompare(b._cat));
   return { rows, tokens };
 }
 
 function highlight(text, tokens) {
-  let out = esc(text);
-  if (!tokens.length) return out;
+  if (!tokens.length) return esc(text);
   const n = norm(text);
-  // evidenzia solo se il testo normalizzato ha la stessa lunghezza (niente accenti strani)
-  if (n.length !== text.length) return out;
+  if (n.length !== text.length) return esc(text);
   const marks = new Array(text.length).fill(false);
   tokens.forEach(t => { let i = n.indexOf(t); while (i >= 0) { for (let j = i; j < i + t.length; j++) marks[j] = true; i = n.indexOf(t, i + 1); } });
-  out = ''; let open = false;
+  let out = '', open = false;
   for (let i = 0; i < text.length; i++) {
     if (marks[i] && !open) { out += '<mark>'; open = true; }
     if (!marks[i] && open) { out += '</mark>'; open = false; }
@@ -281,144 +452,214 @@ function highlight(text, tokens) {
 }
 
 function personHTML(r, tokens = []) {
-  const ts = state.in[r.k];
-  const note = state.notes[r.k];
-  return `<li class="person${ts ? ' in' : ''}" data-k="${esc(r.k)}">
+  const x = recs[r.k] || {};
+  const inside = isInside(r.k), out = isOut(r.k);
+  const cc = catClass(r._cat);
+  const tags = [
+    inside ? `<span class="tag ok">✓ Dentro dalle ${fmtTime(lastIn(x))}</span>` : '',
+    out ? `<span class="tag out">↗ Uscito ${fmtTime(x.o)}</span>` : '',
+    r._cat ? `<span class="tag cat ${cc}">${esc(r._cat)}</span>` : '',
+    r.added ? `<span class="tag new">In loco</span>` : '',
+    dups[r.k] ? `<span class="tag dup">👯 Doppione?</span>` : '',
+    x.n ? `<span class="tag note">📝 ${esc(x.n)}</span>` : ''
+  ].join('');
+  return `<li class="person${inside ? ' in' : ''}${out ? ' out' : ''}${cc === 'bad' ? ' flag-bad' : ''}" data-k="${esc(r.k)}">
     <div class="avatar">${esc(initials(r._name))}</div>
     <div class="p-main">
       <div class="p-name">${highlight(r._name, tokens)}</div>
       ${r._sub ? `<div class="p-sub">${highlight(r._sub, tokens)}</div>` : ''}
-      ${(ts || note || r.added) ? `<div class="p-tags">
-        ${ts ? `<span class="tag ok">✓ Entrato ${fmtTime(ts)}</span>` : ''}
-        ${r.added ? `<span class="tag new">In loco</span>` : ''}
-        ${note ? `<span class="tag note">📝 ${esc(note)}</span>` : ''}
-      </div>` : ''}
+      ${tags ? `<div class="p-tags">${tags}</div>` : ''}
     </div>
-    <button class="note-btn${note ? ' has' : ''}" data-act="note" aria-label="Nota">📝</button>
-    <button class="check" data-act="check" aria-label="${ts ? 'Annulla ingresso' : 'Registra ingresso'}">✓</button>
+    <button class="check" data-act="check" aria-label="${inside ? 'Uscita o annulla' : out ? 'Rientro' : 'Registra ingresso'}">${out ? '↩' : '✓'}</button>
   </li>`;
 }
+function lastIn(x) { const ins = (x.l || []).filter(e => e[1] === 'i'); return ins.length ? ins[ins.length - 1][0] : x.t; }
 
 function renderList() {
   const { rows, tokens } = filteredRows();
   const ul = $('#people');
   if (!rows.length) {
     const q = $('#searchInput').value.trim();
-    ul.innerHTML = `<li class="empty"><b>${q ? '🔍' : filter === 'no' ? '🎉' : '—'}</b>${
-      q ? `Nessuno trovato per “${esc(q)}”` : filter === 'no' ? 'Sono entrati tutti!' : 'Ancora nessun ingresso'}</li>`;
-  } else {
-    ul.innerHTML = rows.slice(0, shown).map(r => personHTML(r, tokens)).join('');
-  }
+    ul.innerHTML = `<li class="empty"><b>${q ? '🔍' : filter === 'no' ? '🎉' : '—'}</b>${q ? `Nessuno trovato per “${esc(q)}”` : filter === 'no' ? 'Sono entrati tutti!' : 'Ancora nessun ingresso'}</li>`;
+  } else ul.innerHTML = rows.slice(0, shown).map(r => personHTML(r, tokens)).join('');
   $('#moreBtn').hidden = rows.length <= shown;
   $('#moreBtn').textContent = `Mostra altri (${rows.length - shown})`;
   $('#resultInfo').textContent = `${rows.length} ${rows.length === 1 ? 'persona' : 'persone'}`;
 }
+/* aggiornamento dalla sincronizzazione: non disturba se c'è una finestra aperta */
+function renderListSoft() { if (!$('#dash').hidden && $('#modal').hidden) renderList(); else if ($('#modal').hidden) renderAll(); }
 
 function refreshItem(k, flash) {
   const li = $(`.person[data-k="${CSS.escape(k)}"]`);
-  const r = list.rows.find(x => x.k === k);
+  const r = rowByKey(k);
   if (!li || !r) return;
-  const tokens = norm($('#searchInput').value).split(' ').filter(Boolean);
-  li.outerHTML = personHTML(r, tokens);
-  if (flash) { const n = $(`.person[data-k="${CSS.escape(k)}"]`); n?.classList.add('flash'); }
+  li.outerHTML = personHTML(r, norm($('#searchInput').value).split(' ').filter(Boolean));
+  if (flash) $(`.person[data-k="${CSS.escape(k)}"]`)?.classList.add('flash');
 }
 
 /* =====================================================
-   CHECK-IN
+   AZIONI SU UNA PERSONA
    ===================================================== */
-function setIn(k, value, ts = Date.now()) {
-  lastAction = { k, prev: state.in[k] || null };
-  if (value) state.in[k] = ts; else delete state.in[k];
-  saveState();
+function touch(k, r) {
+  lastAction = { k, prev: recs[k] ? JSON.parse(JSON.stringify(recs[k])) : null };
+  r.u = Date.now(); r.d = settings.device;
+  recs[k] = r; queue[k] = 1;
+  saveRecs(); scheduleSync();
 }
+const base = k => JSON.parse(JSON.stringify(recs[k] || { t: 0, o: 0, n: '', v: '', l: [] }));
 
-async function toggle(k) {
-  const r = list.rows.find(x => x.k === k);
-  if (!r) return;
-  if (state.in[k]) {
-    const res = await modal({ title: 'Annullare ingresso?', text: `${r._name} risulta entrato alle ${fmtTime(state.in[k])}.`, ok: 'Sì, annulla', danger: true, cancel: 'Indietro' });
-    if (!res.ok) return;
-    setIn(k, false);
-    toast(`Ingresso annullato: ${r._name}`, 'warn');
-  } else {
-    setIn(k, true);
-    feedback('ok');
-    toast(`✓ Entrato: ${r._name}`, '', 'Annulla', undo);
-  }
-  refreshItem(k, !!state.in[k]);
-  renderCounts();
-
-  // se l'elemento non rientra più nel filtro, o si stava cercando, aggiorna la lista
-  const search = $('#searchInput').value.trim();
-  if (filter !== 'all' || sortMode === 'recent' || search) {
-    setTimeout(() => {
-      if (search && state.in[k]) { $('#searchInput').value = ''; $('#searchClear').hidden = true; }
-      renderList();
-    }, 900);
-  }
+function doIn(k, via) {
+  const r = base(k), now = Date.now();
+  if (!r.t) r.t = now;
+  r.o = 0; (r.l ||= []).push([now, 'i']);
+  if (via) r.v = via;
+  touch(k, r);
 }
+function doOut(k) { const r = base(k), now = Date.now(); r.o = now; (r.l ||= []).push([now, 'o']); touch(k, r); }
+function doCancel(k) { const r = base(k); r.t = 0; r.o = 0; r.l = []; r.v = ''; touch(k, r); }
+function doNote(k, text) { const r = base(k); r.n = text; touch(k, r); }
 
 function undo() {
   if (!lastAction) return;
   const { k, prev } = lastAction;
-  if (prev) state.in[k] = prev; else delete state.in[k];
-  saveState();
+  const r = prev || { t: 0, o: 0, n: '', v: '', l: [] };
+  r.u = Date.now(); r.d = settings.device;
+  recs[k] = r; queue[k] = 1; saveRecs(); scheduleSync();
   lastAction = null;
   renderCounts(); renderList();
   toast('Operazione annullata', 'warn');
 }
 $('#undoBtn').addEventListener('click', undo);
 
+/* chiede conferma se lo Stato non è "selezionato" */
+async function confirmCat(r) {
+  const cc = catClass(r._cat);
+  if (!r._cat || cc === 'good' || cc === '') return true;
+  const res = await modal({ title: cc === 'bad' ? '⛔ Attenzione' : '⚠️ Attenzione', text: `${r._name} ha stato “${r._cat}”. Registrare comunque l'ingresso?`, ok: 'Fai entrare', danger: cc === 'bad', cancel: 'Indietro' });
+  return res.ok;
+}
+
+async function quickAction(k) {
+  const r = rowByKey(k);
+  if (!r) return;
+  if (isInside(k)) {
+    const res = await choose(r._name, `Dentro dalle ${fmtTime(lastIn(recs[k]))}`, [
+      { id: 'out', label: '↗ Segna uscita' },
+      { id: 'cancel', label: '✕ Annulla ingresso (errore)', cls: 'danger' }
+    ]);
+    if (res === 'out') { doOut(k); toast(`↗ Uscito: ${r._name}`, '', 'Annulla', undo); }
+    else if (res === 'cancel') { doCancel(k); toast(`Ingresso annullato: ${r._name}`, 'warn', 'Annulla', undo); }
+    else return;
+  } else {
+    const wasOut = isOut(k);
+    if (!wasOut && !(await confirmCat(r))) return;
+    doIn(k);
+    feedback('ok');
+    toast(`${wasOut ? '↩ Rientrato' : '✓ Entrato'}: ${r._name}`, '', 'Annulla', undo);
+  }
+  afterChange(k);
+}
+
+function afterChange(k) {
+  refreshItem(k, isInside(k));
+  renderCounts();
+  const search = $('#searchInput').value.trim();
+  if (filter !== 'all' || sortMode === 'recent' || search) {
+    setTimeout(() => {
+      if (search && isInside(k)) { $('#searchInput').value = ''; $('#searchClear').hidden = true; }
+      renderList();
+    }, 900);
+  }
+}
+
 $('#people').addEventListener('click', e => {
   const li = e.target.closest('.person');
   if (!li) return;
-  const act = e.target.closest('[data-act]')?.dataset.act;
-  if (act === 'note') editNote(li.dataset.k);
-  else toggle(li.dataset.k);
+  if (e.target.closest('[data-act=check]')) quickAction(li.dataset.k);
+  else openDetail(li.dataset.k);
 });
 
+/* ─── SCHEDA DETTAGLIO ─── */
+function fieldValue(h, v) {
+  const n = norm(h); const s = String(v);
+  if (/^https?:\/\//.test(s)) return `<a href="${esc(s)}" target="_blank" rel="noopener">Apri ↗</a>`;
+  if (/e-?mail/.test(n) && s.includes('@')) return `<a href="mailto:${esc(s)}">${esc(s)}</a>`;
+  if (/(telefono|cellulare|phone)/.test(n)) return `<a href="tel:${esc(s.replace(/[^\d+]/g, ''))}">${esc(s)}</a>`;
+  if (/instagram/.test(n)) { const u = s.replace(/^@/, '').replace(/.*instagram\.com\//, '').replace(/\/.*/, ''); return `<a href="https://instagram.com/${esc(u)}" target="_blank" rel="noopener">@${esc(u)}</a>`; }
+  return esc(s);
+}
+
+async function openDetail(k) {
+  const r = rowByKey(k); if (!r) return;
+  const x = recs[k] || {};
+  const inside = isInside(k), out = isOut(k);
+  const status = inside ? `<span class="tag ok">✓ Dentro dalle ${fmtTime(lastIn(x))}</span>` : out ? `<span class="tag out">↗ Uscito alle ${fmtTime(x.o)}</span>` : '<span class="tag">Non ancora entrato</span>';
+  const fields = list.headers.map((h, i) => [h, r.c[i]]).filter(([, v]) => String(v).trim());
+  const log = (x.l || []).slice().reverse().map(([t, ty]) => `<li><span>${ty === 'i' ? '✓ Entrata' : '↗ Uscita'}</span><time>${fmtTime(t)}</time></li>`).join('');
+  const btns = inside
+    ? `<button class="btn btn-dark" data-d="out">↗ Segna uscita</button><button class="btn btn-ghost danger-txt" data-d="cancel">Annulla ingresso</button>`
+    : `<button class="btn btn-chrome" data-d="in">${out ? '↩ Rientro' : '✓ Registra ingresso'}</button>`;
+  const res = await modal({
+    title: r._name, text: '',
+    body: `<div class="detail">
+      <div class="p-tags">${status}${r._cat ? `<span class="tag cat ${catClass(r._cat)}">${esc(r._cat)}</span>` : ''}${r.added ? '<span class="tag new">In loco</span>' : ''}${dups[k] ? `<span class="tag dup">👯 ${esc(dups[k])}</span>` : ''}</div>
+      ${x.v ? `<div class="d-via">Entrato con: <b>${esc(x.v)}</b></div>` : ''}
+      <dl>${fields.map(([h, v]) => `<dt>${esc(h)}</dt><dd>${fieldValue(h, v)}</dd>`).join('')}</dl>
+      <div class="d-note"><span>Nota</span><p>${x.n ? esc(x.n) : '<i>Nessuna nota</i>'}</p><button class="link-btn" data-d="note">✏️ ${x.n ? 'Modifica' : 'Aggiungi'} nota</button></div>
+      ${log ? `<div class="d-log"><span>Storico</span><ul class="recent">${log}</ul></div>` : ''}
+      ${x.d ? `<div class="d-dev">Ultima modifica da: ${esc(x.d)}</div>` : ''}
+      <div class="d-actions">${btns}</div>
+    </div>`,
+    single: true, ok: 'Chiudi',
+    onBody: b => b.addEventListener('click', e => { const d = e.target.closest('[data-d]'); if (d) closeModal(d.dataset.d); })
+  });
+  const v = res.value;
+  if (v === 'in') { if (!out && !(await confirmCat(r))) return; doIn(k); feedback('ok'); toast(`${out ? '↩ Rientrato' : '✓ Entrato'}: ${r._name}`, '', 'Annulla', undo); afterChange(k); }
+  if (v === 'out') { doOut(k); toast(`↗ Uscito: ${r._name}`, '', 'Annulla', undo); afterChange(k); }
+  if (v === 'cancel') { doCancel(k); toast(`Ingresso annullato: ${r._name}`, 'warn', 'Annulla', undo); afterChange(k); }
+  if (v === 'note') editNote(k);
+}
+
 async function editNote(k) {
-  const r = list.rows.find(x => x.k === k);
+  const r = rowByKey(k);
   const res = await modal({
     title: 'Nota', text: r._name,
-    body: `<label class="field"><textarea id="noteText" rows="3" placeholder="Es. pagamento da verificare, pass VIP…">${esc(state.notes[k] || '')}</textarea></label>`,
+    body: `<label class="field"><textarea id="noteText" rows="3" placeholder="Es. pagamento da verificare, pass VIP…">${esc(recs[k]?.n || '')}</textarea></label>`,
     ok: 'Salva', focus: '#noteText'
   });
   if (!res.ok) return;
   const v = $('#noteText').value.trim();
-  if (v) state.notes[k] = v; else delete state.notes[k];
-  saveState();
+  doNote(k, v);
   refreshItem(k);
   toast(v ? 'Nota salvata' : 'Nota rimossa');
 }
 
 /* ─── AGGIUNGI IN LOCO ─── */
 $('#addBtn').addEventListener('click', async () => {
-  const twoFields = cols.cognome >= 0;
+  const two = cols.cognome >= 0;
+  const infoCol = cols.info[0];
   const res = await modal({
     title: 'Aggiungi partecipante', text: 'Per chi si iscrive direttamente all\'ingresso.',
     body: `
       <label class="field"><span>${esc(list.headers[cols.nome] || 'Nome')}</span><input id="addNome" autocomplete="off"></label>
-      ${twoFields ? `<label class="field"><span>${esc(list.headers[cols.cognome] || 'Cognome')}</span><input id="addCognome" autocomplete="off"></label>` : ''}
-      ${cols.info[0] !== undefined ? `<label class="field"><span>${esc(list.headers[cols.info[0]])} (facoltativo)</span><input id="addInfo" autocomplete="off"></label>` : ''}
+      ${two ? `<label class="field"><span>${esc(list.headers[cols.cognome])}</span><input id="addCognome" autocomplete="off"></label>` : ''}
+      ${infoCol !== undefined ? `<label class="field"><span>${esc(list.headers[infoCol])} (facoltativo)</span><input id="addInfo" autocomplete="off"></label>` : ''}
       <label class="field"><span>Nota (facoltativa)</span><input id="addNote" autocomplete="off"></label>`,
     ok: 'Aggiungi ed entra', focus: '#addNome'
   });
   if (!res.ok) return;
-  const nome = $('#addNome').value.trim();
-  const cognome = twoFields ? $('#addCognome').value.trim() : '';
+  const nome = $('#addNome').value.trim(), cognome = two ? $('#addCognome').value.trim() : '';
   if (!nome && !cognome) { toast('Inserisci almeno il nome', 'err'); return; }
   const c = list.headers.map(() => '');
-  c[cols.nome] = nome;
-  if (twoFields) c[cols.cognome] = cognome;
-  const info = $('#addInfo')?.value.trim();
-  if (info) c[cols.info[0]] = info;
-  const k = 'add-' + Date.now().toString(36);
-  list.rows.push({ k, c, added: true });
-  prepare(); saveList();
-  const note = $('#addNote').value.trim();
-  if (note) state.notes[k] = note;
-  setIn(k, true);
+  c[cols.nome] = nome; if (two) c[cols.cognome] = cognome;
+  const info = $('#addInfo')?.value.trim(); if (info) c[infoCol] = info;
+  if (cols.cat >= 0) c[cols.cat] = 'In loco';
+  const k = 'add-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const now = Date.now();
+  recs[k] = { t: 0, o: 0, n: '', v: '', l: [], a: { c, name: (nome + ' ' + cognome).trim() } };
+  mergeAdded(); prepare();
+  const r = base(k); r.t = now; r.l = [[now, 'i']]; r.n = $('#addNote').value.trim();
+  touch(k, r);
   feedback('ok');
   renderAll();
   toast(`✓ Aggiunto ed entrato: ${(nome + ' ' + cognome).trim()}`);
@@ -431,10 +672,7 @@ $('#searchInput').addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => { shown = PAGE; renderList(); }, 80);
 });
-$('#searchClear').addEventListener('click', () => {
-  $('#searchInput').value = ''; $('#searchClear').hidden = true;
-  shown = PAGE; renderList(); $('#searchInput').focus();
-});
+$('#searchClear').addEventListener('click', () => { $('#searchInput').value = ''; $('#searchClear').hidden = true; shown = PAGE; renderList(); $('#searchInput').focus(); });
 $$('.seg').forEach(b => b.addEventListener('click', () => {
   filter = b.dataset.filter;
   $$('.seg').forEach(x => x.classList.toggle('active', x === b));
@@ -442,87 +680,138 @@ $$('.seg').forEach(b => b.addEventListener('click', () => {
 }));
 $('#moreBtn').addEventListener('click', () => { shown += PAGE; renderList(); });
 
-const SORTS = { list: 'Ordine lista', az: 'Cognome A→Z', recent: 'Ultimi entrati' };
 $('#sortBtn').addEventListener('click', async () => {
-  const res = await modal({
-    title: 'Ordina per',
-    body: `<div class="opts">${Object.entries(SORTS).map(([k, v]) => `<button class="opt${k === sortMode ? ' active' : ''}" data-sort="${k}">${v}</button>`).join('')}</div>`,
-    single: true, ok: 'Chiudi', onBody: body => body.addEventListener('click', e => {
-      const b = e.target.closest('[data-sort]'); if (!b) return;
-      sortMode = b.dataset.sort; closeModal(true);
-    })
-  });
-  $('#sortLabel').textContent = SORTS[sortMode].replace('Ordine ', '');
+  const opts = [{ id: 'list', label: 'Ordine lista' }, { id: 'az', label: 'Cognome A→Z' }, { id: 'recent', label: 'Ultimi movimenti' }];
+  if (cols.cat >= 0) opts.push({ id: 'cat', label: list.headers[cols.cat] });
+  const v = await choose('Ordina per', '', opts.map(o => ({ ...o, active: o.id === sortMode })));
+  if (!v) return;
+  sortMode = v;
+  $('#sortLabel').textContent = opts.find(o => o.id === v).label.replace('Ordine ', '');
   shown = PAGE; renderList();
 });
 
-/* sticky bar: aggiunge un bordo quando si "aggancia" in alto */
 window.addEventListener('scroll', () => {
   const t = $('#stickyTools');
   if (t && !$('#dash').hidden) t.classList.toggle('stuck', t.getBoundingClientRect().top <= 0.5);
 }, { passive: true });
 
+/* ─── RICERCA VOCALE ─── */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SR) {
+  $('#micBtn').hidden = false;
+  let rec = null;
+  $('#micBtn').addEventListener('click', () => {
+    if (rec) { rec.stop(); return; }
+    rec = new SR(); rec.lang = 'it-IT'; rec.interimResults = true; rec.maxAlternatives = 1;
+    $('#micBtn').classList.add('on');
+    rec.onresult = e => {
+      const txt = [...e.results].map(x => x[0].transcript).join(' ').replace(/[.,!?]/g, '');
+      $('#searchInput').value = txt; $('#searchClear').hidden = !txt;
+      shown = PAGE; renderList();
+    };
+    rec.onerror = e => { if (e.error === 'not-allowed') toast('Permesso microfono negato', 'err'); };
+    rec.onend = () => { $('#micBtn').classList.remove('on'); rec = null; };
+    try { rec.start(); } catch { $('#micBtn').classList.remove('on'); rec = null; }
+  });
+}
+
 /* =====================================================
-   SCANNER QR (resta aperto: più persone di fila)
+   SCANNER QR
    ===================================================== */
 let qr = null, lastCode = '', lastCodeAt = 0, busyUntil = 0;
-
 $('#scanBtn').addEventListener('click', openScanner);
 $('#scanClose').addEventListener('click', closeScanner);
 
 async function openScanner() {
   if (typeof Html5Qrcode === 'undefined') { toast('Scanner non disponibile: serve connessione al primo avvio', 'err'); return; }
+  $('#toast').className = '';
   $('#scanner').hidden = false;
   setScanResult('', 'In attesa di un codice…');
   renderCounts();
   try {
     qr = new Html5Qrcode('reader', { verbose: false });
-    await qr.start(
-      { facingMode: 'environment' },
+    await qr.start({ facingMode: 'environment' },
       { fps: 12, qrbox: (w, h) => { const s = Math.floor(Math.min(w, h) * 0.62); return { width: s, height: s }; } },
-      onScan, () => {}
-    );
+      onScan, () => {});
   } catch (err) {
     console.error(err);
     setScanResult('bad', '<b>Fotocamera non disponibile</b>Controlla i permessi della fotocamera nelle impostazioni.', '📷');
   }
 }
-
 async function closeScanner() {
   try { if (qr && qr.isScanning) await qr.stop(); qr?.clear(); } catch (e) { console.error(e); }
-  qr = null;
-  $('#scanner').hidden = true;
-  renderList();
+  qr = null; $('#scanner').hidden = true; renderList();
+}
+
+/* trova la persona e, se il codice è una targa, il veicolo corrispondente */
+function findByCode(text) {
+  const t = norm(text), tc = compact(text);
+  for (const r of list?.rows || []) {
+    if (r.k === text) return { r };
+    for (let i = 0; i < r.c.length; i++) {
+      const c = r.c[i];
+      if (!c) continue;
+      if (norm(c) === t || (tc.length >= 4 && compact(c) === tc)) return { r, via: vehicleFor(r, i) };
+    }
+  }
+  return null;
+}
+function vehicleFor(r, i) {
+  const h = norm(list.headers[i]);
+  const m = h.match(/^targa ?(\d*)$/);
+  if (!m) return '';
+  const vc = list.headers.findIndex(x => norm(x) === ('veicolo ' + m[1]).trim() || (!m[1] && /^(veicolo|auto|modello)$/.test(norm(x))));
+  return [vc >= 0 ? r.c[vc] : '', r.c[i]].filter(Boolean).join(' · ');
 }
 
 function onScan(text) {
   const now = Date.now();
   if (now < busyUntil) return;
-  if (text === lastCode && now - lastCodeAt < 4000) return;   // stesso codice appena letto
+  if (text === lastCode && now - lastCodeAt < 4000) return;
   lastCode = text; lastCodeAt = now; busyUntil = now + 1500;
+  scanActions([]);
 
-  const t = norm(text);
-  const r = list?.rows.find(x => x.k === text || x.c.some(c => c && norm(c) === t));
-  if (!r) {
-    feedback('bad');
-    setScanResult('bad', `<b>Non trovato</b>${esc(text.length > 40 ? text.slice(0, 40) + '…' : text)}`, '✕');
-    return;
-  }
-  if (state.in[r.k]) {
+  const found = findByCode(text);
+  if (!found) { feedback('bad'); setScanResult('bad', `<b>Non trovato</b>${esc(text.length > 40 ? text.slice(0, 40) + '…' : text)}`, '✕'); return; }
+  const { r, via } = found;
+  const sub = via || r._sub || '';
+
+  if (isInside(r.k)) {
     feedback('warn');
-    setScanResult('warn', `<b>${esc(r._name)}</b>Già entrato alle ${fmtTime(state.in[r.k])}`, '⚠️');
+    setScanResult('warn', `<b>${esc(r._name)}</b>Già dentro dalle ${fmtTime(lastIn(recs[r.k]))}`, '⚠️');
+    scanActions([{ label: '↗ Segna uscita', fn: () => { doOut(r.k); setScanResult('', `<b>${esc(r._name)}</b>Uscita registrata`, '↗'); renderCounts(); } }]);
     return;
   }
-  setIn(r.k, true);
-  feedback('ok');
-  setScanResult('ok', `<b>${esc(r._name)}</b>${r._sub ? esc(r._sub) : 'Ingresso registrato'}`, '✓');
+  if (isOut(r.k)) {
+    doIn(r.k, via); feedback('ok');
+    setScanResult('ok', `<b>${esc(r._name)}</b>Rientrato · ${esc(sub)}`, '↩'); renderCounts();
+    return;
+  }
+  const cc = catClass(r._cat);
+  if (r._cat && (cc === 'bad' || cc === 'warn')) {
+    feedback(cc === 'bad' ? 'bad' : 'warn');
+    setScanResult(cc === 'bad' ? 'bad' : 'warn', `<b>${esc(r._name)}</b>Stato: ${esc(r._cat)} · ${esc(sub)}`, cc === 'bad' ? '⛔' : '⚠️');
+    scanActions([{ label: 'Fai entrare comunque', fn: () => { doIn(r.k, via); feedback('ok'); setScanResult('ok', `<b>${esc(r._name)}</b>Ingresso registrato`, '✓'); renderCounts(); } }]);
+    return;
+  }
+  doIn(r.k, via); feedback('ok');
+  setScanResult('ok', `<b>${esc(r._name)}</b>${esc(sub || 'Ingresso registrato')}`, '✓');
   renderCounts();
 }
-
 function setScanResult(cls, html, ico = '') {
   const el = $('#scanResult');
   el.className = 'scan-result ' + cls;
   el.innerHTML = (ico ? `<span class="ico">${ico}</span>` : '') + `<span>${html}</span>`;
+}
+function scanActions(acts) {
+  const box = $('#scanActions');
+  box.innerHTML = '';
+  acts.forEach(a => {
+    const b = document.createElement('button');
+    b.className = 'btn btn-dark btn-block'; b.textContent = a.label;
+    b.onclick = () => { box.innerHTML = ''; a.fn(); };
+    box.appendChild(b);
+  });
 }
 
 /* ─── SUONO + VIBRAZIONE ─── */
@@ -546,37 +835,47 @@ function feedback(type) {
 /* =====================================================
    STATISTICHE
    ===================================================== */
-function renderStats() {
+function statsData() {
   const c = counts();
-  $('#sTot').textContent = c.tot; $('#sIn').textContent = c.inN; $('#sWait').textContent = c.wait; $('#sPct').textContent = c.pct + '%';
-
-  const entries = list ? list.rows.filter(r => state.in[r.k]).map(r => ({ r, t: state.in[r.k] })).sort((a, b) => a.t - b.t) : [];
-  $('#sFirst').textContent = entries.length ? fmtTime(entries[0].t) : '—';
-  $('#sLast').textContent  = entries.length ? fmtTime(entries[entries.length - 1].t) : '—';
-
+  const entries = list ? list.rows.filter(r => everIn(r.k)).map(r => ({ r, t: recs[r.k].t })).sort((a, b) => a.t - b.t) : [];
   const buckets = {};
   entries.forEach(({ t }) => { const d = new Date(t); const k = `${pad(d.getHours())}:${pad(Math.floor(d.getMinutes() / 15) * 15)}`; buckets[k] = (buckets[k] || 0) + 1; });
   const keys = Object.keys(buckets).sort();
-  const max = keys.length ? Math.max(...keys.map(k => buckets[k])) : 1;
   const peak = keys.reduce((b, k) => (!b || buckets[k] > buckets[b] ? k : b), null);
-  $('#sPeak').textContent = peak ? `${peak} · ${buckets[peak]}` : '—';
+  let rate = null;
+  if (entries.length > 1) { const span = (entries[entries.length - 1].t - entries[0].t) / 60000; if (span >= 10) rate = Math.round(entries.length / span * 60); }
+  const cats = {};
+  if (cols.cat >= 0 && list) list.rows.forEach(r => { const v = r._cat || '—'; cats[v] ||= { tot: 0, in: 0 }; cats[v].tot++; if (everIn(r.k)) cats[v].in++; });
+  const moves = [];
+  if (list) list.rows.forEach(r => (recs[r.k]?.l || []).forEach(([t, ty]) => moves.push({ r, t, ty })));
+  moves.sort((a, b) => b.t - a.t);
+  return { c, entries, buckets, keys, peak, rate, cats, moves,
+    first: entries.length ? entries[0].t : null, last: entries.length ? entries[entries.length - 1].t : null,
+    notes: list ? list.rows.filter(r => recs[r.k]?.n).length : 0, added: list ? list.rows.filter(r => r.added).length : 0 };
+}
 
-  if (entries.length > 1) {
-    const span = (entries[entries.length - 1].t - entries[0].t) / 60000;
-    $('#sRate').textContent = span >= 10 ? `~${Math.round(entries.length / span * 60)} / ora` : '—';
-  } else $('#sRate').textContent = '—';
-
-  $('#chart').innerHTML = keys.length
-    ? keys.map(k => `<div class="col"><span class="v">${buckets[k]}</span><div class="b${k === peak ? ' peak' : ''}" style="height:${Math.max(3, Math.round(buckets[k] / max * 100))}%"></div><span class="l">${k}</span></div>`).join('')
+function renderStats() {
+  const s = statsData(), c = s.c;
+  $('#sTot').textContent = c.tot; $('#sIn').textContent = c.inN; $('#sInside').textContent = c.inside;
+  $('#sWait').textContent = c.wait; $('#sPct').textContent = c.pct + '%'; $('#sOut').textContent = c.out;
+  $('#sFirst').textContent = s.first ? fmtTime(s.first) : '—';
+  $('#sLast').textContent = s.last ? fmtTime(s.last) : '—';
+  $('#sPeak').textContent = s.peak ? `${s.peak} · ${s.buckets[s.peak]}` : '—';
+  $('#sRate').textContent = s.rate ? `~${s.rate} / ora` : '—';
+  const max = s.keys.length ? Math.max(...s.keys.map(k => s.buckets[k])) : 1;
+  $('#chart').innerHTML = s.keys.length
+    ? s.keys.map(k => `<div class="col"><span class="v">${s.buckets[k]}</span><div class="b${k === s.peak ? ' peak' : ''}" style="height:${Math.max(3, Math.round(s.buckets[k] / max * 100))}%"></div><span class="l">${k}</span></div>`).join('')
     : '<p class="muted">Nessun ingresso registrato ancora.</p>';
-
-  const recent = entries.slice(-8).reverse();
-  $('#recent').innerHTML = recent.length
-    ? recent.map(({ r, t }) => `<li><span>${esc(r._name)}</span><time>${fmtTime(t)}</time></li>`).join('')
+  const catEntries = Object.entries(s.cats).sort((a, b) => b[1].tot - a[1].tot);
+  $('#catCard').hidden = !catEntries.length;
+  if (catEntries.length) {
+    $('#catTitle').textContent = 'PER ' + list.headers[cols.cat].toUpperCase();
+    $('#catList').innerHTML = catEntries.map(([v, x]) => `<li><span class="tag cat ${catClass(v)}">${esc(v)}</span><span class="cat-bar"><i style="width:${x.tot ? Math.round(x.in / x.tot * 100) : 0}%"></i></span><b>${x.in}/${x.tot}</b></li>`).join('');
+  }
+  $('#recent').innerHTML = s.moves.length
+    ? s.moves.slice(0, 10).map(m => `<li><span>${m.ty === 'i' ? '✓' : '↗'} ${esc(m.r._name)}</span><time class="${m.ty === 'o' ? 'o' : ''}">${fmtTime(m.t)}</time></li>`).join('')
     : '<li class="muted">—</li>';
-
-  $('#sNotes').textContent = list ? list.rows.filter(r => state.notes[r.k]).length : 0;
-  $('#sAdded').textContent = list ? list.rows.filter(r => r.added).length : 0;
+  $('#sNotes').textContent = s.notes; $('#sAdded').textContent = s.added;
 }
 
 /* =====================================================
@@ -588,30 +887,59 @@ document.addEventListener('click', e => {
 });
 
 const ACTIONS = {
+  loadOnline: () => loadOnline(false),
+  syncNow: () => syncNow(true),
   export: () => exportExcel(false),
   exportWaiting: () => exportExcel(true),
+  pdf: () => exportPDF(),
+  async showDups() {
+    if (!list) return toast('Carica prima una lista', 'err');
+    if (!dupGroups.length) return toast('Nessun doppione trovato 👍');
+    await modal({
+      title: dupGroups.length === 1 ? '1 possibile doppione' : `${dupGroups.length} possibili doppioni`, text: 'Persone con stessa email, telefono o targa. Controlla prima di farle entrare.',
+      body: `<div class="dup-list">${dupGroups.map(g => `<div class="dup-g"><div class="dup-h">${esc(g.type)} · <b>${esc(g.val)}</b></div>${g.rows.map(r => `<div class="dup-r">${esc(r._name)}${everIn(r.k) ? ' <span class="tag ok">entrato</span>' : ''}</div>`).join('')}</div>`).join('')}</div>`,
+      single: true, ok: 'Chiudi'
+    });
+  },
   backup() {
     if (!list) return toast('Niente da salvare: carica prima una lista', 'err');
-    const data = { app: 'pt-checkin', v: 3, savedAt: Date.now(), list: { ...list, rows: list.rows.map(({ k, c, added }) => ({ k, c, added })) }, state };
+    const data = { app: 'pt-checkin', v: 4, savedAt: Date.now(), list: { ...list, rows: list.rows.filter(r => !r.added).map(({ k, c }) => ({ k, c })) }, recs };
     saveFile(new Blob([JSON.stringify(data)], { type: 'application/json' }), `Padania_backup_${dateTag()}.json`);
     toast('Backup creato 💾');
   },
   restore: () => $('#restoreInput').click(),
   async resetCheckins() {
-    const r = await modal({ title: 'Azzerare i check-in?', text: 'Tutti gli ingressi e le note verranno cancellati. La lista resta. Non si può annullare.', ok: 'Azzera', danger: true });
+    const r = await modal({ title: 'Azzerare i check-in?', text: settings.sync ? 'Cancella ingressi, uscite e note su TUTTI i telefoni collegati. Non si può annullare.' : 'Tutti gli ingressi e le note verranno cancellati. La lista resta. Non si può annullare.', ok: 'Azzera', danger: true });
     if (!r.ok) return;
-    state = { in: {}, notes: {} }; saveState(); lastAction = null; renderAll();
+    const now = Date.now();
+    Object.keys(recs).forEach(k => { recs[k] = { t: 0, o: 0, n: '', v: '', l: [], a: recs[k].a, u: now, d: settings.device }; queue[k] = 1; });
+    saveRecs(); scheduleSync(); lastAction = null; renderAll();
     toast('Check-in azzerati', 'warn');
   },
   async clearAll() {
-    const r = await modal({ title: 'Cancellare tutto?', text: 'Lista, check-in e note verranno rimossi da questo telefono. Fai prima un backup se ti serve.', ok: 'Cancella tutto', danger: true });
+    const r = await modal({ title: 'Cancellare i dati dal telefono?', text: 'Lista, check-in e note vengono rimossi da questo telefono. Il Foglio Google non viene toccato.', ok: 'Cancella', danger: true });
     if (!r.ok) return;
-    list = null; state = { in: {}, notes: {} };
-    localStorage.removeItem(K_LIST); saveState(); lastAction = null;
+    list = null; recs = {}; queue = {}; dups = {}; dupGroups = [];
+    localStorage.removeItem(K_LIST); saveRecs(); lastAction = null;
     renderAll(); showPage('checkin');
     toast('Dati cancellati', 'warn');
   },
-  logout() { try { sessionStorage.removeItem('ptAuthed'); } catch {} showAuth(true); }
+  logout() { try { sessionStorage.removeItem('ptAuthed'); } catch {} clearInterval(sync.timer); showAuth(true); },
+  async deviceName() {
+    const res = await modal({ title: 'Nome telefono', text: 'Compare nello storico e nel Foglio Google (es. "Cancello 1", "Ale").',
+      body: `<label class="field"><input id="devName" value="${esc(settings.device)}" maxlength="24" autocomplete="off"></label>`, ok: 'Salva', focus: '#devName' });
+    if (!res.ok) return;
+    settings.device = $('#devName').value.trim() || settings.device; saveSettings(); renderOnline();
+  },
+  async scriptUrl() {
+    const res = await modal({ title: 'Indirizzo script', text: 'L\'URL dell\'app web Google (finisce con /exec). È lo stesso di assets/js/config.js del sito.',
+      body: `<label class="field"><textarea id="urlTxt" rows="3">${esc(settings.url)}</textarea></label><button class="link-btn" id="urlReset" type="button">Ripristina predefinito</button>`, ok: 'Salva',
+      onBody: b => b.querySelector('#urlReset').onclick = () => { $('#urlTxt').value = DEFAULT_SCRIPT_URL; } });
+    if (!res.ok) return;
+    const u = $('#urlTxt').value.trim();
+    if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)) return toast('Indirizzo non valido', 'err');
+    settings.url = u; saveSettings(); toast('Indirizzo salvato'); syncNow(true);
+  }
 };
 
 $('#restoreInput').addEventListener('change', async e => {
@@ -622,34 +950,141 @@ $('#restoreInput').addEventListener('change', async e => {
     if (data.app !== 'pt-checkin' || !data.list) throw new Error('formato');
     const r = await modal({ title: 'Ripristinare il backup?', text: `Backup del ${new Date(data.savedAt).toLocaleString('it-IT')}. Sostituisce i dati attuali su questo telefono.`, ok: 'Ripristina' });
     if (!r.ok) return;
-    list = data.list; state = data.state || { in: {}, notes: {} };
-    state.in = state.in || {}; state.notes = state.notes || {};
-    prepare(); saveList(); saveState(); lastAction = null; shown = PAGE;
+    list = { ...data.list, rows: data.list.rows.filter(x => !x.added) };
+    if (data.recs) recs = data.recs;
+    else if (data.state) {      // backup della versione 3
+      recs = {};
+      const now = Date.now();
+      Object.entries(data.state.in || {}).forEach(([k, t]) => { recs[k] = { t, o: 0, n: '', v: '', l: [[t, 'i']], u: now }; });
+      Object.entries(data.state.notes || {}).forEach(([k, n]) => { recs[k] = { ...(recs[k] || { t: 0, o: 0, v: '', l: [] }), n, u: now }; });
+    }
+    Object.keys(recs).forEach(k => { queue[k] = 1; });
+    mergeAdded(); prepare(); saveList(); saveRecs(); scheduleSync();
+    lastAction = null; shown = PAGE;
     renderAll(); showPage('checkin');
     toast('Backup ripristinato ♻️');
-  } catch (err) {
-    console.error(err);
-    toast('File di backup non valido', 'err');
-  }
+  } catch (err) { console.error(err); toast('File di backup non valido', 'err'); }
 });
 
+/* ─── EXPORT EXCEL ─── */
 function exportExcel(onlyWaiting) {
   if (!list) return toast('Nessuna lista da esportare', 'err');
   if (typeof XLSX === 'undefined') return toast('Libreria Excel non caricata', 'err');
-  const rows = list.rows.filter(r => !onlyWaiting || !state.in[r.k]);
-  const aoa = [[...list.headers, 'Entrato', 'Ora ingresso', 'Note', 'Aggiunto in loco']];
-  rows.forEach(r => aoa.push([...r.c, state.in[r.k] ? 'SI' : 'NO', state.in[r.k] ? fmtTime(state.in[r.k]) : '', state.notes[r.k] || '', r.added ? 'SI' : '']));
+  const rows = list.rows.filter(r => !onlyWaiting || !everIn(r.k));
+  const aoa = [[...list.headers, 'Entrato', 'Primo ingresso', 'Dentro ora', 'Uscito alle', 'Entrato con', 'Note', 'Aggiunto in loco', 'Telefono staff']];
+  rows.forEach(r => {
+    const x = recs[r.k] || {};
+    aoa.push([...r.c, x.t ? 'SI' : 'NO', x.t ? fmtTime(x.t) : '', isInside(r.k) ? 'SI' : (x.t ? 'NO' : ''), x.o ? fmtTime(x.o) : '', x.v || '', x.n || '', r.added ? 'SI' : '', x.d || '']);
+  });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = aoa[0].map((_, i) => ({ wch: Math.min(40, Math.max(10, ...aoa.slice(0, 200).map(r => String(r[i] ?? '').length + 2))) }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, onlyWaiting ? 'Assenti' : 'Check-in');
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  saveFile(new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-    `Padania_${onlyWaiting ? 'assenti' : 'checkin'}_${dateTag()}.xlsx`);
+  saveFile(new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Padania_${onlyWaiting ? 'assenti' : 'checkin'}_${dateTag()}.xlsx`);
   toast(onlyWaiting ? `Esportati ${rows.length} assenti` : 'Excel esportato 📊');
 }
 
-/* Su telefono usa il menu Condividi (Salva su File, WhatsApp, Mail…), su computer scarica */
+/* ─── RIEPILOGO PDF ─── */
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+}
+async function exportPDF() {
+  if (!list) return toast('Carica prima una lista', 'err');
+  try { if (!window.jspdf) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); }
+  catch { return toast('Libreria PDF non disponibile: serve connessione', 'err'); }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const s = statsData(), c = s.c;
+  const W = 210, M = 16;
+  let y = 0;
+  const newPage = () => { doc.addPage(); y = 18; };
+  const need = h => { if (y + h > 280) newPage(); };
+
+  // intestazione
+  doc.setFillColor(12, 12, 14); doc.rect(0, 0, W, 36, 'F');
+  try { const img = await fetch('./assets/logo.png').then(r => r.blob()).then(b => new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(b); })); doc.addImage(img, 'PNG', M, 6, 24, 24); } catch {}
+  doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
+  doc.text('PADANIA TUNING', M + 30, 17);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(190, 192, 196);
+  doc.text(`Riepilogo check-in · ${list.name}`, M + 30, 24);
+  doc.text(`Generato il ${new Date().toLocaleString('it-IT')}`, M + 30, 30);
+  y = 48;
+
+  // numeri
+  const boxes = [['Iscritti', c.tot], ['Entrati', c.inN], ['Dentro ora', c.inside], ['Attesi', c.wait], ['% ingressi', c.pct + '%'], ['Usciti', c.out],
+    ['Primo ingresso', s.first ? fmtTime(s.first) : '-'], ['Ultimo ingresso', s.last ? fmtTime(s.last) : '-']];
+  const bw = (W - M * 2 - 9) / 4;
+  boxes.forEach(([l, v], i) => {
+    const x = M + (i % 4) * (bw + 3), yy = y + Math.floor(i / 4) * 24;
+    doc.setDrawColor(220, 222, 226); doc.roundedRect(x, yy, bw, 20, 2, 2);
+    doc.setFontSize(8); doc.setTextColor(120, 122, 128); doc.text(l.toUpperCase(), x + 4, yy + 6);
+    doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(17, 17, 20); doc.text(String(v), x + 4, yy + 15); doc.setFont('helvetica', 'normal');
+  });
+  y += 54;
+
+  // grafico
+  if (s.keys.length) {
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(17, 17, 20); doc.text('Ingressi ogni 15 minuti', M, y); doc.setFont('helvetica', 'normal');
+    y += 4;
+    const ch = 40, max = Math.max(...s.keys.map(k => s.buckets[k]));
+    const bwid = Math.min(10, (W - M * 2) / s.keys.length - 1.5);
+    s.keys.forEach((k, i) => {
+      const h = s.buckets[k] / max * ch, x = M + i * (bwid + 1.5);
+      if (k === s.peak) doc.setFillColor(52, 180, 110); else doc.setFillColor(150, 154, 160);
+      doc.rect(x, y + ch - h, bwid, h, 'F');
+      doc.setFontSize(6); doc.setTextColor(90, 92, 98);
+      doc.text(String(s.buckets[k]), x + bwid / 2, y + ch - h - 1, { align: 'center' });
+      if (s.keys.length <= 24 || i % 2 === 0) doc.text(k, x + bwid / 2, y + ch + 4, { align: 'center' });
+    });
+    y += ch + 12;
+    if (s.peak) { doc.setFontSize(9); doc.setTextColor(90, 92, 98); doc.text(`Fascia di punta: ${s.peak} (${s.buckets[s.peak]} ingressi)${s.rate ? ` · ritmo medio ~${s.rate}/ora` : ''}`, M, y); y += 8; }
+  }
+
+  // per stato
+  const cats = Object.entries(s.cats);
+  if (cats.length) {
+    need(12 + cats.length * 6);
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(17, 17, 20); doc.text('Per ' + list.headers[cols.cat].toLowerCase(), M, y); doc.setFont('helvetica', 'normal'); y += 6;
+    cats.forEach(([v, x]) => { doc.setFontSize(10); doc.text(`${v}`, M, y); doc.text(`${x.in} entrati su ${x.tot}`, W - M, y, { align: 'right' }); y += 6; });
+    y += 4;
+  }
+
+  // elenco entrati
+  const table = (title, rows, colsDef) => {
+    need(20);
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(17, 17, 20); doc.text(title, M, y); y += 6;
+    const head = () => { doc.setFillColor(240, 241, 243); doc.rect(M, y - 4, W - M * 2, 6, 'F'); doc.setFontSize(8); doc.setTextColor(90, 92, 98); colsDef.forEach(cd => doc.text(cd.h, cd.x, y)); y += 5; doc.setFont('helvetica', 'normal'); };
+    head();
+    rows.forEach(r => {
+      if (y > 282) { newPage(); doc.setFont('helvetica', 'bold'); head(); }
+      doc.setFontSize(9); doc.setTextColor(30, 30, 34);
+      colsDef.forEach(cd => doc.text(doc.splitTextToSize(String(cd.v(r) ?? ''), cd.w)[0] || '', cd.x, y));
+      y += 5.2;
+    });
+    y += 6;
+  };
+  const entered = s.entries.map(e => e.r);
+  if (entered.length) table(`Entrati (${entered.length})`, entered, [
+    { h: 'NOME', x: M, w: 58, v: r => r._name },
+    { h: 'ENTRATO CON / INFO', x: M + 60, w: 62, v: r => recs[r.k].v || r._sub },
+    { h: 'INGRESSO', x: M + 125, w: 18, v: r => fmtTime(recs[r.k].t) },
+    { h: 'USCITA', x: M + 145, w: 18, v: r => recs[r.k].o ? fmtTime(recs[r.k].o) : '' },
+    { h: 'NOTE', x: M + 163, w: 16, v: r => recs[r.k].n ? 'sì' : '' }
+  ]);
+  const noted = list.rows.filter(r => recs[r.k]?.n);
+  if (noted.length) table(`Note (${noted.length})`, noted, [
+    { h: 'NOME', x: M, w: 58, v: r => r._name },
+    { h: 'NOTA', x: M + 60, w: W - M * 2 - 60, v: r => recs[r.k].n }
+  ]);
+
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(150, 152, 158); doc.text(`PadaniaTuning Check-in · pagina ${i} di ${pages}`, W / 2, 292, { align: 'center' }); }
+  await saveFile(doc.output('blob'), `Padania_riepilogo_${dateTag()}.pdf`);
+  toast('Riepilogo PDF creato 📄');
+}
+
+/* Su telefono usa il menu Condividi (File, WhatsApp, Mail…), su computer scarica */
 async function saveFile(blob, name) {
   const file = new File([blob], name, { type: blob.type });
   if (matchMedia('(pointer:coarse)').matches && navigator.canShare?.({ files: [file] })) {
@@ -666,42 +1101,63 @@ async function saveFile(blob, name) {
 function applySettings() {
   $('#wakeToggle').checked = settings.wake;
   $('#soundToggle').checked = settings.sound;
+  $('#bigToggle').checked = settings.big;
+  $('#syncToggle').checked = settings.sync;
+  document.documentElement.classList.toggle('big', settings.big);
 }
-$('#wakeToggle').addEventListener('change', e => { settings.wake = e.target.checked; save(K_SET, settings); settings.wake ? requestWake() : releaseWake(); });
-$('#soundToggle').addEventListener('change', e => { settings.sound = e.target.checked; save(K_SET, settings); if (settings.sound) feedback('ok'); });
+$('#wakeToggle').addEventListener('change', e => { settings.wake = e.target.checked; saveSettings(); settings.wake ? requestWake() : releaseWake(); });
+$('#soundToggle').addEventListener('change', e => { settings.sound = e.target.checked; saveSettings(); if (settings.sound) feedback('ok'); });
+$('#bigToggle').addEventListener('change', e => { settings.big = e.target.checked; saveSettings(); applySettings(); });
+$('#syncToggle').addEventListener('change', e => {
+  settings.sync = e.target.checked; saveSettings();
+  if (settings.sync) { Object.keys(recs).forEach(k => { queue[k] = 1; }); saveRecs(); toast('Sincronizzazione attiva 🔁'); }
+  startSync(); renderOnline(); renderSyncPill();
+});
 
 async function requestWake() {
   if (!settings.wake || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
   try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
 }
 function releaseWake() { try { wakeLock?.release(); } catch {} wakeLock = null; }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && isAuthed()) requestWake(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && isAuthed()) { requestWake(); if (settings.sync) syncNow(); }
+});
 
 /* =====================================================
    MODALE + TOAST
    ===================================================== */
 let modalResolve = null;
 function modal({ title, text = '', body = '', ok = 'OK', cancel = 'Annulla', danger = false, single = false, focus, onBody }) {
+  if (modalResolve) closeModal(false);
+  $('#toast').className = '';
   $('#mTitle').textContent = title;
   $('#mText').textContent = text;
   $('#mBody').innerHTML = body;
   const okBtn = $('#mOk');
   okBtn.textContent = ok;
-  okBtn.className = 'btn ' + (danger ? 'btn-danger' : 'btn-chrome');
+  okBtn.className = 'btn ' + (single ? 'btn-ghost' : danger ? 'btn-danger' : 'btn-chrome');
   $('#mCancel').textContent = cancel;
   $('#mCancel').hidden = single;
   $('.sheet-actions').classList.toggle('single', single);
-  if (single) { okBtn.className = 'btn btn-ghost'; }
-  $('#toast').className = '';
   $('#modal').hidden = false;
+  $('.sheet').scrollTop = 0;
   onBody?.($('#mBody'));
   if (focus) setTimeout(() => $(focus)?.focus(), 250);
   return new Promise(res => { modalResolve = res; });
 }
-function closeModal(ok) {
+function closeModal(v) {
   $('#modal').hidden = true;
   const r = modalResolve; modalResolve = null;
-  r?.({ ok });
+  r?.({ ok: v === true, value: v });
+}
+/* finestra con scelte multiple: restituisce l'id scelto o null */
+async function choose(title, text, options) {
+  const res = await modal({
+    title, text, single: true, ok: 'Indietro',
+    body: `<div class="opts">${options.map(o => `<button class="opt${o.active ? ' active' : ''}${o.cls ? ' ' + o.cls : ''}" data-opt="${esc(o.id)}">${esc(o.label)}</button>`).join('')}</div>`,
+    onBody: b => b.addEventListener('click', e => { const x = e.target.closest('[data-opt]'); if (x) closeModal('opt:' + x.dataset.opt); })
+  });
+  return typeof res.value === 'string' && res.value.startsWith('opt:') ? res.value.slice(4) : null;
 }
 $('#mOk').addEventListener('click', () => closeModal(true));
 $('#mCancel').addEventListener('click', () => closeModal(false));
@@ -713,12 +1169,13 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'Escape') closeModal(false);
-  if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); closeModal(true); }
+  if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && !$('#mCancel').hidden) { e.preventDefault(); closeModal(true); }
 });
 
 let toastTimer;
 function toast(msg, type = '', actionLabel, actionFn) {
   const t = $('#toast');
+  if (!$('#scanner').hidden) return;   // nello scanner c'è già il riquadro risultato
   t.innerHTML = esc(msg) + (actionLabel ? ` <button class="toast-act">${esc(actionLabel)}</button>` : '');
   t.className = 'show ' + type;
   t.style.pointerEvents = actionLabel ? 'auto' : 'none';
@@ -730,18 +1187,18 @@ function toast(msg, type = '', actionLabel, actionFn) {
 /* =====================================================
    AVVIO
    ===================================================== */
-list     = load(K_LIST, null);
-state    = load(K_STATE, { in: {}, notes: {} });
-state.in = state.in || {}; state.notes = state.notes || {};
 settings = { ...settings, ...load(K_SET, {}) };
-prepare();
+if (!settings.device) { settings.device = 'Telefono ' + Math.random().toString(36).slice(2, 5).toUpperCase(); saveSettings(); }
+if (!settings.url) settings.url = DEFAULT_SCRIPT_URL;
+list = load(K_LIST, null);
+recs = load(K_RECS, {});
+queue = load(K_QUEUE, {});
+if (list) { mergeAdded(); prepare(); }
 applySettings();
 renderAll();
 showAuth(!isAuthed());
 
-function hideSplash() {
-  const s = $('#splash'); if (!s) return; s.classList.add('hide'); setTimeout(() => s.remove(), 400);
-}
+function hideSplash() { const s = $('#splash'); if (!s) return; s.classList.add('hide'); setTimeout(() => s.remove(), 400); }
 window.addEventListener('load', () => setTimeout(hideSplash, 350));
 setTimeout(hideSplash, 2500);
 

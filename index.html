@@ -48,9 +48,9 @@
   <header class="topbar">
     <div class="brand">
       <img src="./assets/logo.png" alt="">
-      <div>
+      <div class="brand-txt">
         <div class="brand-name">PADANIA TUNING</div>
-        <div class="brand-sub" id="listName">Nessuna lista</div>
+        <div class="brand-sub"><span id="syncPill" class="sync-pill" hidden></span><span id="listName">Nessuna lista</span></div>
       </div>
     </div>
     <div class="counter-chip" id="counterChip"><b id="chipIn">0</b><span>/<i id="chipTot">0</i></span></div>
@@ -63,8 +63,9 @@
     <section class="welcome" id="welcome">
       <div class="welcome-art">🏁</div>
       <h2 class="display">Pronti a partire</h2>
-      <p>Carica la lista iscritti esportata dal sito (Excel o CSV) per iniziare il check-in.</p>
-      <label for="fileInput" class="btn btn-chrome btn-lg">📥 Carica lista iscritti</label>
+      <p>Scarica gli iscritti direttamente dal sito, oppure carica un file Excel / CSV.</p>
+      <button class="btn btn-chrome btn-lg" data-action="loadOnline">🌐 Scarica iscritti dal sito</button>
+      <label for="fileInput" class="btn btn-lg btn-dark">📥 Carica file Excel / CSV</label>
       <button class="btn btn-ghost" data-action="restore">♻️ Ripristina un backup</button>
     </section>
 
@@ -80,11 +81,14 @@
         </div>
         <div class="bar"><div id="barFill"></div></div>
         <div class="progress-foot">
-          <span><i class="dot dot-ok"></i><b id="countIn2">0</b> entrati</span>
-          <span><i class="dot dot-wait"></i><b id="countWait">0</b> in attesa</span>
-          <button class="undo-btn" id="undoBtn" hidden>↩ Annulla ultimo</button>
+          <span><i class="dot dot-ok"></i><b id="countInside">0</b> dentro</span>
+          <span id="outWrap" hidden><i class="dot dot-out"></i><b id="countOut">0</b> usciti</span>
+          <span><i class="dot dot-wait"></i><b id="countWait">0</b> attesi</span>
+          <button class="undo-btn" id="undoBtn" hidden>↩ Annulla</button>
         </div>
       </div>
+
+      <button class="dup-banner" id="dupBanner" data-action="showDups" hidden></button>
 
       <div class="actions-row">
         <button class="btn btn-chrome btn-lg scan-btn" id="scanBtn">
@@ -98,10 +102,11 @@
           <span class="search-ico">⌕</span>
           <input type="search" id="searchInput" placeholder="Cerca nome, cognome, targa…" autocomplete="off" enterkeyhint="search">
           <button class="search-clear" id="searchClear" hidden aria-label="Cancella">✕</button>
+          <button class="mic-btn" id="micBtn" hidden aria-label="Cerca con la voce">🎙</button>
         </div>
         <div class="segmented" role="tablist">
           <button class="seg active" data-filter="all">Tutti <em id="fAll">0</em></button>
-          <button class="seg" data-filter="no">In attesa <em id="fNo">0</em></button>
+          <button class="seg" data-filter="no">Attesi <em id="fNo">0</em></button>
           <button class="seg" data-filter="yes">Entrati <em id="fYes">0</em></button>
         </div>
       </div>
@@ -120,10 +125,12 @@
   <main id="page-stats" class="page" hidden>
     <h2 class="page-title display">Statistiche</h2>
     <div class="stat-grid">
-      <div class="stat"><span>Totale</span><b id="sTot">0</b></div>
+      <div class="stat"><span>Iscritti</span><b id="sTot">0</b></div>
       <div class="stat ok"><span>Entrati</span><b id="sIn">0</b></div>
-      <div class="stat wait"><span>In attesa</span><b id="sWait">0</b></div>
+      <div class="stat ok2"><span>Dentro ora</span><b id="sInside">0</b></div>
+      <div class="stat wait"><span>Attesi</span><b id="sWait">0</b></div>
       <div class="stat"><span>% ingressi</span><b id="sPct">0%</b></div>
+      <div class="stat"><span>Usciti</span><b id="sOut">0</b></div>
       <div class="stat"><span>Primo ingresso</span><b id="sFirst">—</b></div>
       <div class="stat"><span>Ultimo ingresso</span><b id="sLast">—</b></div>
       <div class="stat"><span>Fascia di punta</span><b id="sPeak" class="sm">—</b></div>
@@ -133,57 +140,80 @@
       <div class="eyebrow">INGRESSI OGNI 15 MINUTI</div>
       <div class="chart" id="chart"></div>
     </div>
+    <div class="card" id="catCard" hidden>
+      <div class="eyebrow" id="catTitle">PER STATO</div>
+      <ul class="cat-list" id="catList"></ul>
+    </div>
     <div class="card">
-      <div class="eyebrow">ULTIMI INGRESSI</div>
+      <div class="eyebrow">ULTIMI MOVIMENTI</div>
       <ul class="recent" id="recent"></ul>
     </div>
     <div class="stat-row">
       <div class="stat"><span>Con nota</span><b id="sNotes">0</b></div>
       <div class="stat"><span>Aggiunti in loco</span><b id="sAdded">0</b></div>
     </div>
+    <button class="btn btn-dark btn-block mt" data-action="pdf">📄 Scarica riepilogo PDF</button>
   </main>
 
   <!-- ===== PAGINA STRUMENTI ===== -->
   <main id="page-tools" class="page" hidden>
     <h2 class="page-title display">Strumenti</h2>
 
-    <div class="group-label">Lista</div>
+    <div class="group-label">Collegamento online</div>
+    <div class="online-card" id="onlineCard">
+      <div class="online-status"><i id="onlineDot"></i><div><b id="onlineTitle">Non collegato</b><small id="onlineSub">Funziona solo su questo telefono</small></div></div>
+    </div>
     <div class="menu">
-      <label for="fileInput" class="menu-item"><span class="mi-ico">📥</span><span><b>Carica / aggiorna lista</b><small>I check-in già fatti restano salvati</small></span></label>
-      <button class="menu-item" data-action="export"><span class="mi-ico">📊</span><span><b>Esporta Excel</b><small>Report con orari, stato e note</small></span></button>
-      <button class="menu-item" data-action="exportWaiting"><span class="mi-ico">⏳</span><span><b>Esporta solo assenti</b><small>Chi non si è ancora presentato</small></span></button>
+      <button class="menu-item" data-action="loadOnline"><span class="mi-ico">🌐</span><span><b>Scarica / aggiorna iscritti dal sito</b><small>Dal Foglio Google delle iscrizioni</small></span></button>
+      <div class="menu-item static"><span class="mi-ico">🔁</span><span><b>Sincronizza tra telefoni</b><small>Tutti vedono gli stessi check-in</small></span>
+        <label class="switch"><input type="checkbox" id="syncToggle"><i></i></label></div>
+      <button class="menu-item" data-action="syncNow"><span class="mi-ico">⚡</span><span><b>Sincronizza adesso</b><small id="lastSyncTxt">Mai sincronizzato</small></span></button>
+      <button class="menu-item" data-action="deviceName"><span class="mi-ico">📱</span><span><b>Nome di questo telefono</b><small id="deviceTxt">—</small></span></button>
+      <button class="menu-item" data-action="scriptUrl"><span class="mi-ico">🔗</span><span><b>Indirizzo script Google</b><small>Avanzato: cambialo solo se rifai lo script</small></span></button>
     </div>
 
-    <div class="group-label">Sicurezza dati</div>
+    <div class="group-label">Lista e report</div>
     <div class="menu">
-      <button class="menu-item" data-action="backup"><span class="mi-ico">💾</span><span><b>Salva backup</b><small>File con lista, check-in e note</small></span></button>
-      <button class="menu-item" data-action="restore"><span class="mi-ico">♻️</span><span><b>Ripristina backup</b><small>Ricarica un file di backup .json</small></span></button>
+      <label for="fileInput" class="menu-item"><span class="mi-ico">📥</span><span><b>Carica lista da file</b><small>Excel o CSV · i check-in già fatti restano</small></span></label>
+      <button class="menu-item" data-action="export"><span class="mi-ico">📊</span><span><b>Esporta Excel</b><small>Con orari di entrata/uscita e note</small></span></button>
+      <button class="menu-item" data-action="exportWaiting"><span class="mi-ico">⏳</span><span><b>Esporta solo assenti</b><small>Chi non si è ancora presentato</small></span></button>
+      <button class="menu-item" data-action="pdf"><span class="mi-ico">📄</span><span><b>Riepilogo PDF</b><small>Da mandare all'organizzazione</small></span></button>
+      <button class="menu-item" data-action="showDups"><span class="mi-ico">👯</span><span><b>Controlla doppioni</b><small>Stessa mail, telefono o targa</small></span></button>
+    </div>
+
+    <div class="group-label">Impostazioni</div>
+    <div class="menu">
+      <div class="menu-item static"><span class="mi-ico">🔠</span><span><b>Testo grande</b><small>Più leggibile all'aperto</small></span>
+        <label class="switch"><input type="checkbox" id="bigToggle"><i></i></label></div>
       <div class="menu-item static"><span class="mi-ico">🔆</span><span><b>Schermo sempre acceso</b><small>Evita lo standby durante l'evento</small></span>
         <label class="switch"><input type="checkbox" id="wakeToggle" checked><i></i></label></div>
       <div class="menu-item static"><span class="mi-ico">🔊</span><span><b>Suono e vibrazione</b><small>Feedback quando scansioni</small></span>
         <label class="switch"><input type="checkbox" id="soundToggle" checked><i></i></label></div>
+      <button class="menu-item" data-action="backup"><span class="mi-ico">💾</span><span><b>Salva backup</b><small>File con lista, check-in e note</small></span></button>
+      <button class="menu-item" data-action="restore"><span class="mi-ico">♻️</span><span><b>Ripristina backup</b><small>Ricarica un file di backup .json</small></span></button>
     </div>
 
     <div class="group-label">Zona pericolosa</div>
     <div class="menu">
       <button class="menu-item danger" data-action="resetCheckins"><span class="mi-ico">🔄</span><span><b>Azzera check-in</b><small>Tiene la lista, cancella ingressi e note</small></span></button>
-      <button class="menu-item danger" data-action="clearAll"><span class="mi-ico">🗑</span><span><b>Cancella tutto</b><small>Rimuove lista e dati da questo telefono</small></span></button>
+      <button class="menu-item danger" data-action="clearAll"><span class="mi-ico">🗑</span><span><b>Cancella dati dal telefono</b><small>Non tocca il Foglio Google</small></span></button>
       <button class="menu-item" data-action="logout"><span class="mi-ico">🔒</span><span><b>Blocca app</b><small>Richiede di nuovo la password</small></span></button>
     </div>
 
     <details class="guide">
       <summary>📖 Come funziona</summary>
       <ol>
-        <li><b>Carica la lista</b> Excel o CSV esportata dal sito. La prima riga deve contenere le intestazioni (es. Nome, Cognome…).</li>
-        <li><b>Cerca</b> per nome, cognome, targa o iniziali (es. “mr” → Mario Rossi).</li>
-        <li><b>Tocca il pulsante ✓</b> sulla persona per registrare l'ingresso: l'orario viene salvato.</li>
-        <li><b>Scansiona QR</b>: lo scanner resta aperto, puoi far passare più persone di fila.</li>
+        <li><b>Scarica gli iscritti dal sito</b> (serve internet) oppure carica un Excel/CSV.</li>
+        <li>Con <b>Sincronizza tra telefoni</b> attivo, tutti i telefoni dello staff vedono gli stessi ingressi. Se manca il campo, l'app continua a funzionare e invia tutto appena torna la connessione.</li>
+        <li><b>Scansiona QR</b>: il QR della mail di conferma contiene la targa. Lo scanner resta aperto per più persone di fila.</li>
+        <li><b>Tocca il pulsante ✓</b> per registrare l'ingresso. Su chi è già dentro puoi segnare l'<b>uscita</b>; al rientro basta un altro tocco.</li>
+        <li><b>Tocca la scheda</b> per vedere tutti i dati della persona e lo storico.</li>
+        <li>Se c'è la colonna <b>Stato</b>, chi non è “Selezionato” viene segnalato prima dell'ingresso.</li>
         <li><b>＋</b> aggiunge chi si iscrive sul posto.</li>
-        <li>Tutto resta salvato sul telefono anche se chiudi l'app. Fai comunque un <b>backup</b> ogni tanto.</li>
-        <li>A fine evento <b>esporta l'Excel</b> con orari e note.</li>
+        <li>A fine evento: <b>Esporta Excel</b> o <b>Riepilogo PDF</b>.</li>
       </ol>
     </details>
-    <p class="version">PadaniaTuning Check-in · v3</p>
+    <p class="version">PadaniaTuning Check-in · v4</p>
   </main>
 </div>
 
@@ -202,7 +232,8 @@
   </div>
   <div class="scan-view"><div id="reader"></div><div class="scan-frame"></div></div>
   <div class="scan-result" id="scanResult"><span>In attesa di un codice…</span></div>
-  <div class="scan-count"><b id="scanIn">0</b> / <span id="scanTot">0</span> entrati</div>
+  <div class="scan-actions" id="scanActions"></div>
+  <div class="scan-count"><b id="scanIn">0</b> dentro · <span id="scanTot">0</span> iscritti</div>
 </div>
 
 <!-- MODALE -->
