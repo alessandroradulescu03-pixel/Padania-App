@@ -12,7 +12,7 @@
 const PW_HASH = '3fc13c35bdb2d6f9146fcd93304ba3c2143d5d017268e17a939f0d315728c8a2';
 
 /* ─── PASSWORD ADMIN ───
-   Serve solo per le impostazioni delicate (indirizzo script, azzera check-in):
+   Serve solo per l'indirizzo dello script Google:
    lo staff usa l'app normalmente ma non può rompere il collegamento.
    Anche qui c'è solo l'impronta SHA-256, non la password in chiaro. */
 const ADMIN_HASH = 'c906338955e9bd5977af6f0888dc965dd856300b59ac77883ec6fe0d25600adb';
@@ -975,7 +975,6 @@ const ACTIONS = {
   },
   restore: () => $('#restoreInput').click(),
   async resetCheckins() {
-    if (!(await requireAdmin())) return;
     const r = await modal({ title: 'Azzerare i check-in?', text: settings.sync ? 'Cancella ingressi, uscite e note su TUTTI i telefoni collegati. Non si può annullare.' : 'Tutti gli ingressi e le note verranno cancellati. La lista resta. Non si può annullare.', ok: 'Azzera', danger: true });
     if (!r.ok) return;
     const now = Date.now();
