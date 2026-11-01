@@ -219,6 +219,8 @@
       <ol>
         <li><b>Installa l'app</b>: apri il link dal telefono e fai <i>Condividi → Aggiungi a Home</i>. Si apre a tutto schermo come un'app vera.</li>
         <li><b>Accedi</b> con la password dello staff e scrivi <b>il tuo nome</b>: verrà firmato su ogni ingresso e uscita che registri. Puoi cambiarlo in <i>Strumenti → Il tuo nome</i>.</li>
+        <li><b>Attiva Face ID</b> (o l'impronta su Android) quando l'app te lo propone: le volte dopo basta toccare <b>“Entra con Face ID”</b>. La password funziona sempre come riserva.</li>
+        <li>Imposta la <b>capienza massima</b> in <i>Strumenti</i> se c'è un limite di posti.</li>
         <li><b>Scarica gli iscritti dal sito</b> (serve internet): arrivano dal Foglio Google delle iscrizioni. In alternativa puoi caricare un file Excel o CSV.</li>
         <li>Fallo su <b>ogni telefono dello staff</b>: la sincronizzazione si attiva da sola.</li>
       </ol>
@@ -226,6 +228,7 @@
       <h4>✓ Far entrare le persone</h4>
       <ul>
         <li><b>Scansiona QR</b>: il QR della mail di conferma contiene la targa. Lo scanner resta aperto, così passano più persone di fila, e registra anche <b>con quale auto</b> è entrato chi ne ha più di una.</li>
+        <li>Se chiudi lo scanner e lo riapri entro 3 minuti, la fotocamera riparte subito senza chiedere di nuovo il permesso.</li>
         <li>Lo scanner ti avvisa con colore, suono e vibrazione: <span class="g-ok">verde</span> = entrato, <span class="g-warn">arancione</span> = già dentro o da controllare, <span class="g-bad">rosso</span> = non trovato o scartato.</li>
         <li><b>Cerca</b> per nome, cognome, targa (anche senza spazi: “ab123cd”), email o iniziali (“mr” = Mario Rossi). Con 🎙 puoi dettare il nome.</li>
         <li>Tocca il pulsante <b>✓</b> sulla persona per registrare l'ingresso. Dopo ogni ingresso compare <b>Annulla</b> per qualche secondo, se hai sbagliato persona.</li>
@@ -237,6 +240,14 @@
         <li>Lo <b>Stato</b> del Foglio Google è colorato su ogni scheda: <span class="g-ok">Selezionato</span>, <span class="g-warn">Da valutare</span>, <span class="g-bad">Scartato</span>.</li>
         <li>Chi non è selezionato <b>non entra in automatico</b>: l'app chiede conferma (“Fai entrare comunque”).</li>
         <li>La lista si riaggiorna da sola ogni 5 minuti: se cambi lo Stato nel Foglio, l'app lo vede.</li>
+      </ul>
+
+      <h4>🚗 Capienza</h4>
+      <ul>
+        <li>In <i>Strumenti → Capienza massima</i> imposti quante persone possono stare dentro insieme (conta chi è <b>dentro ora</b>: chi esce libera il posto).</li>
+        <li>Al <b>75%</b> compare <span class="g-warn">“Quasi al completo”</span>, al <b>90%</b> <span class="g-warn">“Ultimi posti”</span>, al <b>100%</b> <span class="g-bad">“Capienza raggiunta”</span>, con suono e avviso.</li>
+        <li>A capienza piena l'app chiede conferma prima di far entrare altri (“Fai entrare comunque”), anche dallo scanner.</li>
+        <li>La capienza si imposta su ogni telefono.</li>
       </ul>
 
       <h4>↗ Uscite e rientri</h4>
@@ -261,6 +272,14 @@
         <li>Nel Foglio Google, scheda <b>Check-in</b>, trovi in tempo reale chi è entrato, a che ora, chi l'ha fatto entrare e le uscite.</li>
       </ul>
 
+      <h4>📺 Schermo live</h4>
+      <ul>
+        <li>In <i>Strumenti → Schermo live</i> si apre una pagina da mettere su un tablet, un PC o una TV per l'organizzazione.</li>
+        <li>Mostra in grande chi è <b>dentro ora</b>, iscritti, attesi, % arrivati, capienza, ultimi arrivi e grafico. Si aggiorna da solo ogni 3 secondi.</li>
+        <li>La prima volta chiede la password dello staff. Il tasto <b>Schermo intero</b> nasconde tutto il resto.</li>
+        <li>Se lo schermo è visibile al pubblico, aggiungi <b>?nomi=0</b> in fondo all'indirizzo per non mostrare i nomi.</li>
+      </ul>
+
       <h4>🔎 Filtri e controlli</h4>
       <ul>
         <li><b>Tutti / Attesi / Entrati</b> per filtrare la lista; <b>Ordina</b> per cognome, ultimi movimenti o Stato.</li>
@@ -282,18 +301,22 @@
         <li><b>Schermo sempre acceso</b> per non far andare in standby il telefono all'ingresso.</li>
         <li><b>Suono e vibrazione</b> per il feedback dello scanner.</li>
         <li><b>Salva / Ripristina backup</b>: una copia di sicurezza di lista, ingressi e note.</li>
-        <li><b>Blocca app</b> richiede di nuovo la password (si richiede da sola anche quando chiudi l'app del tutto).</li>
+        <li><b>Accesso con Face ID</b>: attivalo o disattivalo quando vuoi.</li>
+        <li><b>Blocca app</b> richiede di nuovo l'accesso (si richiede da solo anche quando chiudi l'app del tutto).</li>
+        <li><b>Indirizzo script Google</b> è protetto dalla <b>password admin</b>: lo staff non può modificarlo per sbaglio.</li>
+        <li>Fotocamera e microfono: per non far chiedere il permesso ogni volta, su iPhone vai in <i>Impostazioni → App → Safari → Fotocamera / Microfono → Consenti</i>.</li>
       </ul>
 
       <h4>💡 Consigli per la serata</h4>
       <ul>
         <li>Scarica la lista <b>prima</b> di arrivare all'evento, quando hai una buona connessione.</li>
         <li>Fai una prova con 2 telefoni: un ingresso su uno deve comparire sull'altro.</li>
+        <li>Prepara lo <b>schermo live</b> su un tablet o una TV e controlla che compaia <span class="g-ok">● LIVE</span>.</li>
         <li>Tieni il telefono in carica o con un powerbank: scanner e schermo acceso consumano.</li>
         <li>A fine serata: <b>Esporta Excel</b> + <b>Riepilogo PDF</b>.</li>
       </ul>
     </details>
-    <p class="version">PadaniaTuning Check-in · v4.1</p>
+    <p class="version">PadaniaTuning Check-in · v4.2</p>
   </main>
 </div>
 
