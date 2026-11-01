@@ -382,3 +382,8 @@ small.by{color:var(--muted);font-size:12px;font-weight:500;margin-left:4px}
 .upd-banner{width:100%;text-align:left;margin-bottom:12px;padding:12px 14px;border-radius:14px;background:rgba(122,167,255,.1);border:1px solid rgba(122,167,255,.45);color:#c9d9ff;font-size:14px}
 .upd-banner b{color:#fff}
 .version .link-btn{font-size:12px;color:var(--dim)}
+
+/* niente zoom con il doppio tap (resta il pizzico con due dita) */
+html,body,*{touch-action:manipulation}
+/* iPhone fa zoom automatico sui campi con testo sotto i 16px: li teniamo tutti a 16px */
+input,textarea,select{font-size:max(16px,1em)}
