@@ -33,7 +33,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 let list = null;          // { name, source, loadedAt, headers, rows:[{k,c,added}] }
 let recs = {};
 let queue = {};
-let settings = { wake: true, sound: true, big: false, sync: false, url: DEFAULT_SCRIPT_URL, device: '' };
+let settings = { wake: true, sound: true, big: false, sync: false, url: DEFAULT_SCRIPT_URL, device: '', capacity: 0 };
 let cols = { nome: 0, cognome: -1, info: [], cat: -1, key: [] };
 let dups = {};            // k -> motivo
 let dupGroups = [];
@@ -453,6 +453,42 @@ function renderCounts() {
   const nd = dupGroups.length;
   $('#dupBanner').hidden = !nd;
   $('#dupBanner').innerHTML = `👯 <b>${nd} ${nd === 1 ? 'possibile doppione' : 'possibili doppioni'}</b> nella lista · Vedi`;
+  renderCap();
+}
+
+/* ─── CAPIENZA ───
+   Conta chi è DENTRO ORA. Avvisi: 75% quasi al completo, 90% ultimi posti, 100% raggiunta. */
+let capLevel = -1;
+function capInfo() {
+  const cap = +settings.capacity || 0;
+  if (!cap) return null;
+  const inside = counts().inside, p = inside / cap;
+  return { cap, inside, left: Math.max(0, cap - inside), level: p >= 1 ? 3 : p >= 0.9 ? 2 : p >= 0.75 ? 1 : 0 };
+}
+function renderCap() {
+  const ci = capInfo();
+  const banners = [$('#capBanner'), $('#scanCap')];
+  if (!ci) { $('#capRow').hidden = true; banners.forEach(b => b.hidden = true); capLevel = -1; return; }
+  $('#capRow').hidden = false;
+  $('#capRow').className = 'cap-row lvl' + ci.level;
+  $('#capTxt2').textContent = `${ci.inside} / ${ci.cap}`;
+  $('#capFill').style.width = Math.min(100, ci.inside / ci.cap * 100) + '%';
+  const msg = ['',
+    `⚠️ <b>Quasi al completo</b> · ${ci.inside} su ${ci.cap} posti occupati`,
+    `🟠 <b>Ultimi posti</b> · ne ${ci.left === 1 ? 'resta 1' : 'restano ' + ci.left}`,
+    `⛔ <b>Capienza raggiunta</b> · ${ci.inside} dentro su ${ci.cap}`][ci.level];
+  banners.forEach(b => { b.hidden = !ci.level; b.className = 'cap-banner lvl' + ci.level; b.innerHTML = msg; });
+  if (capLevel >= 0 && ci.level > capLevel) {          // appena superata una soglia
+    setTimeout(() => feedback(ci.level === 3 ? 'bad' : 'warn'), 350);
+    toast(msg.replace(/<[^>]+>/g, ''), ci.level === 3 ? 'err' : 'warn');
+  }
+  capLevel = ci.level;
+}
+async function confirmCap() {
+  const ci = capInfo();
+  if (!ci || ci.inside < ci.cap) return true;
+  const res = await modal({ title: '⛔ Capienza raggiunta', text: `Dentro ci sono già ${ci.inside} persone su ${ci.cap}. Far entrare comunque?`, ok: 'Fai entrare', danger: true, cancel: 'Indietro' });
+  return res.ok;
 }
 
 function matches(r, q, tokens) {
@@ -546,6 +582,7 @@ function refreshItem(k, flash) {
 function touch(k, r) {
   lastAction = { k, prev: recs[k] ? JSON.parse(JSON.stringify(recs[k])) : null };
   r.u = Date.now(); r.d = settings.device;
+  r.nm = rowByKey(k)?._name || r.a?.name || r.nm || '';   // nome, serve allo schermo live
   recs[k] = r; queue[k] = 1;
   saveRecs(); scheduleSync();
 }
@@ -595,6 +632,7 @@ async function quickAction(k) {
     else return;
   } else {
     const wasOut = isOut(k);
+    if (!(await confirmCap())) return;
     if (!wasOut && !(await confirmCat(r))) return;
     doIn(k);
     feedback('ok');
@@ -656,7 +694,7 @@ async function openDetail(k) {
     onBody: b => b.addEventListener('click', e => { const d = e.target.closest('[data-d]'); if (d) closeModal(d.dataset.d); })
   });
   const v = res.value;
-  if (v === 'in') { if (!out && !(await confirmCat(r))) return; doIn(k); feedback('ok'); toast(`${out ? '↩ Rientrato' : '✓ Entrato'}: ${r._name}`, '', 'Annulla', undo); afterChange(k); }
+  if (v === 'in') { if (!(await confirmCap())) return; if (!out && !(await confirmCat(r))) return; doIn(k); feedback('ok'); toast(`${out ? '↩ Rientrato' : '✓ Entrato'}: ${r._name}`, '', 'Annulla', undo); afterChange(k); }
   if (v === 'out') { doOut(k); toast(`↗ Uscito: ${r._name}`, '', 'Annulla', undo); afterChange(k); }
   if (v === 'cancel') { doCancel(k); toast(`Ingresso annullato: ${r._name}`, 'warn', 'Annulla', undo); afterChange(k); }
   if (v === 'note') editNote(k);
@@ -786,6 +824,9 @@ async function openScanner() {
   $('#scanner').hidden = false;
   setScanResult('', 'In attesa di un codice…');
   renderCounts();
+  clearTimeout(camIdle);
+  // fotocamera rimasta in pausa: riparte subito, senza chiedere di nuovo il permesso
+  try { if (qr && qr.getState && qr.getState() === 3) { qr.resume(); return; } } catch (e) { console.error(e); qr = null; }
   try {
     qr = new Html5Qrcode('reader', { verbose: false });
     await qr.start({ facingMode: 'environment' },
@@ -796,10 +837,19 @@ async function openScanner() {
     setScanResult('bad', '<b>Fotocamera non disponibile</b>Controlla i permessi della fotocamera nelle impostazioni.', '📷');
   }
 }
-async function closeScanner() {
-  try { if (qr && qr.isScanning) await qr.stop(); qr?.clear(); } catch (e) { console.error(e); }
-  qr = null; $('#scanner').hidden = true; renderList();
+/* chiudendo lo scanner la fotocamera va in pausa per 3 minuti: se lo riapri non richiede il permesso */
+let camIdle = null;
+async function stopCamera() {
+  clearTimeout(camIdle);
+  try { if (qr && (qr.isScanning || qr.getState?.() === 3)) await qr.stop(); qr?.clear(); } catch (e) { console.error(e); }
+  qr = null;
 }
+async function closeScanner() {
+  $('#scanner').hidden = true; renderList();
+  try { if (qr && qr.isScanning) { qr.pause(true); camIdle = setTimeout(stopCamera, 3 * 60000); return; } } catch (e) { console.error(e); }
+  stopCamera();
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && $('#scanner').hidden) stopCamera(); });
 
 /* trova la persona e, se il codice è una targa, il veicolo corrispondente */
 function findByCode(text) {
@@ -840,20 +890,27 @@ function onScan(text) {
     scanActions([{ label: '↗ Segna uscita', fn: () => { doOut(r.k); setScanResult('', `<b>${esc(r._name)}</b>Uscita registrata`, '↗'); renderCounts(); } }]);
     return;
   }
-  if (isOut(r.k)) {
-    doIn(r.k, via); feedback('ok');
-    setScanResult('ok', `<b>${esc(r._name)}</b>Rientrato · ${esc(sub)}`, '↩'); renderCounts();
+  admitScan(r, via, sub, false, false);
+}
+/* fa entrare dallo scanner, controllando capienza e Stato */
+function admitScan(r, via, sub, skipCap, skipCat) {
+  const wasOut = isOut(r.k);
+  const ci = capInfo();
+  if (!skipCap && ci && ci.inside >= ci.cap) {
+    feedback('bad');
+    setScanResult('bad', `<b>${esc(r._name)}</b>Capienza raggiunta: ${ci.inside} dentro su ${ci.cap}`, '⛔');
+    scanActions([{ label: 'Fai entrare comunque', fn: () => admitScan(r, via, sub, true, skipCat) }]);
     return;
   }
   const cc = catClass(r._cat);
-  if (r._cat && (cc === 'bad' || cc === 'warn')) {
+  if (!wasOut && !skipCat && r._cat && (cc === 'bad' || cc === 'warn')) {
     feedback(cc === 'bad' ? 'bad' : 'warn');
     setScanResult(cc === 'bad' ? 'bad' : 'warn', `<b>${esc(r._name)}</b>Stato: ${esc(r._cat)} · ${esc(sub)}`, cc === 'bad' ? '⛔' : '⚠️');
-    scanActions([{ label: 'Fai entrare comunque', fn: () => { doIn(r.k, via); feedback('ok'); setScanResult('ok', `<b>${esc(r._name)}</b>Ingresso registrato`, '✓'); renderCounts(); } }]);
+    scanActions([{ label: 'Fai entrare comunque', fn: () => admitScan(r, via, sub, true, true) }]);
     return;
   }
   doIn(r.k, via); feedback('ok');
-  setScanResult('ok', `<b>${esc(r._name)}</b>${esc(sub || 'Ingresso registrato')}`, '✓');
+  setScanResult('ok', `<b>${esc(r._name)}</b>${wasOut ? 'Rientrato · ' : ''}${esc(sub || 'Ingresso registrato')}`, wasOut ? '↩' : '✓');
   renderCounts();
 }
 function setScanResult(cls, html, ico = '') {
@@ -992,6 +1049,15 @@ const ACTIONS = {
   },
   logout() { try { sessionStorage.removeItem('ptAuthed'); sessionStorage.removeItem('ptAdmin'); } catch {} clearInterval(sync.timer); showAuth(true); },
   deviceName: () => askOperator(true),
+  async capacity() {
+    const res = await modal({ title: 'Capienza massima', text: 'Quante persone possono stare dentro insieme? L\'app avvisa al 75% (quasi al completo), al 90% (ultimi posti) e al 100%. Lascia vuoto o 0 per disattivare.',
+      body: `<label class="field"><input id="capIn" type="number" inputmode="numeric" min="0" value="${settings.capacity || ''}" placeholder="Es. 100"></label>`, ok: 'Salva', focus: '#capIn' });
+    if (!res.ok) return;
+    settings.capacity = Math.max(0, parseInt($('#capIn').value, 10) || 0); saveSettings();
+    capLevel = -1; applySettings(); renderCounts();
+    toast(settings.capacity ? `Capienza impostata: ${settings.capacity}` : 'Avviso capienza disattivato');
+  },
+  screen: () => window.open('schermo.html' + (settings.capacity ? '?cap=' + settings.capacity : ''), '_blank'),
   async scriptUrl() {
     if (!(await requireAdmin())) return;
     const res = await modal({ title: 'Indirizzo script', text: 'L\'URL dell\'app web Google (finisce con /exec). È lo stesso di assets/js/config.js del sito.',
@@ -1179,6 +1245,7 @@ function applySettings() {
   $('#bigToggle').checked = settings.big;
   $('#syncToggle').checked = settings.sync;
   document.documentElement.classList.toggle('big', settings.big);
+  $('#capSet').textContent = settings.capacity ? `${settings.capacity} persone · avviso dal 75%` : 'Non impostata';
 }
 $('#wakeToggle').addEventListener('change', e => { settings.wake = e.target.checked; saveSettings(); settings.wake ? requestWake() : releaseWake(); });
 $('#soundToggle').addEventListener('change', e => { settings.sound = e.target.checked; saveSettings(); if (settings.sound) feedback('ok'); });

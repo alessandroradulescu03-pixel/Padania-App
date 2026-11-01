@@ -80,6 +80,7 @@
           <div class="ring" id="ring" style="--p:0"><span id="countPct">0%</span></div>
         </div>
         <div class="bar"><div id="barFill"></div></div>
+        <div class="cap-row" id="capRow" hidden><span>Capienza</span><div class="cap-bar"><i id="capFill"></i></div><b id="capTxt2"></b></div>
         <div class="progress-foot">
           <span><i class="dot dot-ok"></i><b id="countInside">0</b> dentro</span>
           <span id="outWrap" hidden><i class="dot dot-out"></i><b id="countOut">0</b> usciti</span>
@@ -88,6 +89,7 @@
         </div>
       </div>
 
+      <div class="cap-banner" id="capBanner" hidden></div>
       <button class="dup-banner" id="dupBanner" data-action="showDups" hidden></button>
 
       <div class="actions-row">
@@ -193,6 +195,8 @@
         <label class="switch"><input type="checkbox" id="wakeToggle" checked><i></i></label></div>
       <div class="menu-item static"><span class="mi-ico">🔊</span><span><b>Suono e vibrazione</b><small>Feedback quando scansioni</small></span>
         <label class="switch"><input type="checkbox" id="soundToggle" checked><i></i></label></div>
+      <button class="menu-item" data-action="capacity"><span class="mi-ico">🚗</span><span><b>Capienza massima</b><small id="capSet">Non impostata</small></span></button>
+      <button class="menu-item" data-action="screen"><span class="mi-ico">📺</span><span><b>Schermo live</b><small>Contatore per tablet o TV dell'organizzazione</small></span></button>
       <button class="menu-item" data-action="backup"><span class="mi-ico">💾</span><span><b>Salva backup</b><small>File con lista, check-in e note</small></span></button>
       <button class="menu-item" data-action="restore"><span class="mi-ico">♻️</span><span><b>Ripristina backup</b><small>Ricarica un file di backup .json</small></span></button>
     </div>
@@ -302,6 +306,7 @@
     <div><div class="eyebrow">SCANNER</div><b class="display">Inquadra il QR</b></div>
     <button class="icon-btn" id="scanClose" aria-label="Chiudi">✕</button>
   </div>
+  <div class="cap-banner" id="scanCap" hidden></div>
   <div class="scan-view"><div id="reader"></div><div class="scan-frame"></div></div>
   <div class="scan-result" id="scanResult"><span>In attesa di un codice…</span></div>
   <div class="scan-actions" id="scanActions"></div>

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PadaniaTuning · Schermo live</title>
+<meta name="theme-color" content="#0a0a0b">
+<link rel="icon" type="image/png" href="./assets/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a0b;--card:#141417;--line:#26262b;--text:#f2f3f5;--muted:#8b8d94;--silver:#d7dade;
+  --chrome:linear-gradient(180deg,#f5f6f8 0%,#c9cdd2 48%,#9ea3a9 52%,#e3e6e9 100%);
+  --ok:#34d27b;--wait:#f5a524;--bad:#ff5a52;--display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:"Barlow",system-ui,sans-serif;background:radial-gradient(120% 70% at 50% -20%,#1f2024 0%,var(--bg) 60%);color:var(--text);overflow:hidden}
+.d{font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+.wrap{height:100vh;display:grid;grid-template-rows:auto 1fr auto;gap:2.2vh;padding:3vh 3vw}
+header{display:flex;align-items:center;justify-content:space-between;gap:2vw}
+.brand{display:flex;align-items:center;gap:1.4vw}
+.brand img{height:9vh;width:9vh;border-radius:22%;box-shadow:0 0 0 1px var(--line)}
+.brand h1{font-size:5.4vh;line-height:1;background:var(--chrome);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand p{color:var(--muted);font-size:2.2vh;margin-top:.4vh}
+.right{display:flex;align-items:center;gap:2vw}
+.clock{font-family:var(--display);font-weight:700;font-size:6vh;font-variant-numeric:tabular-nums}
+.live{display:inline-flex;align-items:center;gap:.6vw;font-weight:800;font-size:2vh;letter-spacing:1px;padding:.8vh 1.2vw;border-radius:99px;background:rgba(52,210,123,.12);color:var(--ok)}
+.live:before{content:"";width:1.2vh;height:1.2vh;border-radius:50%;background:currentColor;animation:pulse 1.6s infinite}
+.live.off{background:rgba(255,90,82,.12);color:var(--bad)}
+@keyframes pulse{50%{opacity:.25}}
+main{display:grid;grid-template-columns:1.25fr 1fr;gap:2.2vh 2vw;min-height:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:2.4vh;padding:2.6vh 2vw;min-height:0;position:relative;overflow:hidden}
+.lbl{font-size:2vh;font-weight:700;letter-spacing:.25vh;color:var(--muted);text-transform:uppercase}
+.hero{display:flex;flex-direction:column;justify-content:center;background:linear-gradient(160deg,#1b1c20,#111114)}
+.hero .big{font-family:var(--display);font-weight:800;font-size:30vh;line-height:.9;color:var(--ok);font-variant-numeric:tabular-nums;transition:transform .3s}
+.hero .big.bump{transform:scale(1.05)}
+.hero .sub{font-size:3vh;color:var(--muted);margin-top:1vh}
+.hero .sub b{color:var(--text)}
+.cap{margin-top:3vh}
+.cap .row{display:flex;justify-content:space-between;font-size:2.4vh;margin-bottom:1vh}
+.cap .bar{height:2vh;border-radius:99px;background:#26272c;overflow:hidden}
+.cap .bar i{display:block;height:100%;width:0;border-radius:99px;background:var(--silver);transition:width .5s}
+.cap.l1 .bar i{background:var(--wait)}.cap.l2 .bar i{background:#ff8a3d}.cap.l3 .bar i{background:var(--bad)}
+.cap .msg{margin-top:1.2vh;font-size:2.6vh;font-weight:700}
+.cap.l1 .msg{color:var(--wait)}.cap.l2 .msg{color:#ff8a3d}.cap.l3 .msg{color:var(--bad);animation:pulse 1.4s infinite}
+.side{display:grid;grid-template-rows:auto 1fr;gap:2.2vh;min-height:0}
+.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4vw}
+.num b{display:block;font-family:var(--display);font-weight:800;font-size:9vh;line-height:1;margin-top:.6vh;font-variant-numeric:tabular-nums}
+.num.w b{color:var(--wait)}
+.recent{list-style:none;margin-top:1.6vh;display:grid;gap:1.2vh}
+.recent li{display:flex;justify-content:space-between;align-items:center;gap:1vw;font-size:3vh;padding:1.1vh 0;border-bottom:1px solid var(--line);animation:in .5s ease}
+.recent li:last-child{border-bottom:0}
+.recent li span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recent time{font-family:var(--display);font-weight:700;color:var(--ok);font-variant-numeric:tabular-nums}
+.recent .o time{color:#7aa7ff}
+@keyframes in{from{opacity:0;transform:translateY(-1vh)}}
+.chart-card{grid-column:1/-1}
+.chart{display:flex;align-items:flex-end;gap:.5vw;height:14vh;margin-top:1.4vh}
+.chart .c{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:.5vh;min-width:0}
+.chart .b{width:100%;max-width:5vw;min-height:3px;border-radius:.8vh .8vh .2vh .2vh;background:linear-gradient(180deg,#eef0f2,#8f949a)}
+.chart .b.p{background:linear-gradient(180deg,#7cf0ad,var(--ok))}
+.chart .l{font-size:1.5vh;color:var(--muted);white-space:nowrap}
+.muted{color:var(--muted);font-size:2.4vh}
+footer{display:flex;justify-content:space-between;color:#5d5f66;font-size:1.8vh}
+footer button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:99px;padding:.6vh 1.4vw;font:inherit;cursor:pointer}
+@media (orientation:portrait){
+  body{overflow:auto}
+  .wrap{height:auto;min-height:100vh}
+  main{grid-template-columns:1fr}
+  .hero .big{font-size:22vh}
+  .chart-card{grid-column:auto}
+}
+/* login */
+#login[hidden]{display:none}
+#login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:9;padding:24px}
+#login form{width:100%;max-width:340px;text-align:center}
+#login img{width:110px;border-radius:26px;margin-bottom:18px}
+#login h2{font-size:32px;margin-bottom:8px}
+#login p{color:var(--muted);margin-bottom:18px;font-size:15px}
+#login input{width:100%;padding:15px;border-radius:12px;border:1px solid #34343a;background:#111113;color:var(--text);font-size:16px;text-align:center;margin-bottom:12px;outline:0}
+#login button{width:100%;padding:15px;border-radius:12px;border:0;background:var(--chrome);color:#111;font-weight:800;font-size:16px;cursor:pointer}
+#login .err{color:var(--bad);min-height:20px;margin-top:10px;font-size:14px;font-weight:600}
+</style>
+</head>
+<body>
+
+<div id="login" hidden>
+  <form id="loginForm" autocomplete="off">
+    <img src="./assets/logo.png" alt="">
+    <h2 class="d">Schermo live</h2>
+    <p>Password dello staff per collegare lo schermo.</p>
+    <input type="password" id="pw" placeholder="Password">
+    <button type="submit">Collega</button>
+    <div class="err" id="err"></div>
+  </form>
+</div>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <img src="./assets/logo.png" alt="">
+      <div><h1 class="d">Padania Tuning</h1><p id="evName">Ingressi in tempo reale</p></div>
+    </div>
+    <div class="right"><span class="live" id="live">LIVE</span><span class="clock" id="clock">--:--</span></div>
+  </header>
+
+  <main>
+    <section class="card hero">
+      <div class="lbl">Dentro ora</div>
+      <div class="big" id="inside">0</div>
+      <div class="sub"><b id="entered">0</b> entrati in totale · <b id="out">0</b> usciti</div>
+      <div class="cap" id="cap" hidden>
+        <div class="row"><span>Capienza</span><b id="capTxt">0 / 0</b></div>
+        <div class="bar"><i id="capFill"></i></div>
+        <div class="msg" id="capMsg"></div>
+      </div>
+    </section>
+
+    <section class="side">
+      <div class="card nums">
+        <div class="num"><div class="lbl">Iscritti</div><b id="tot">0</b></div>
+        <div class="num w"><div class="lbl">Attesi</div><b id="wait">0</b></div>
+        <div class="num"><div class="lbl">Arrivati</div><b id="pct">0%</b></div>
+      </div>
+      <div class="card">
+        <div class="lbl">Ultimi arrivi</div>
+        <ul class="recent" id="recent"></ul>
+      </div>
+    </section>
+
+    <section class="card chart-card">
+      <div class="lbl">Ingressi ogni 15 minuti</div>
+      <div class="chart" id="chart"></div>
+    </section>
+  </main>
+
+  <footer><span id="upd">In attesa dei dati…</span><button id="fs">⛶ Schermo intero</button></footer>
+</div>
+
+<script>
+/* Schermo live: legge gli stessi dati dell'app check-in (script Google) e si aggiorna da solo.
+   Parametri opzionali nell'indirizzo: ?cap=100 (capienza)  ·  ?nomi=0 (nasconde i nomi) */
+const PW_HASH = '3fc13c35bdb2d6f9146fcd93304ba3c2143d5d017268e17a939f0d315728c8a2';
+const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbweHwQuH_P4cblhQDbDnI6Ri86qSEqwWyMSCgTRZJ3yFjr5KV_0Q8NpHRUUOVoqZTrjug/exec';
+const $ = s => document.querySelector(s);
+const params = new URLSearchParams(location.search);
+const load = (k, f) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : f; } catch { return f; } };
+const settings = load('pt4_settings', {});
+const URL_ = settings.url || DEFAULT_SCRIPT_URL;
+const CAP = +params.get('cap') || +settings.capacity || 0;
+const SHOW_NAMES = params.get('nomi') !== '0';
+let key = ''; try { key = localStorage.getItem('pt4_key') || ''; } catch {}
+let recs = {}, total = 0, listAt = 0, rev = '', lastInside = -1, ok = false, lastOk = 0;
+
+const pad = n => String(n).padStart(2, '0');
+const fmt = t => new Date(t).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function sha256(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+async function api(body) {
+  const ctrl = new AbortController(); const tm = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const r = await fetch(URL_, { method: 'POST', redirect: 'follow', signal: ctrl.signal, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, key }) });
+    const d = await r.json();
+    if (d.auth === false) { showLogin('Password non accettata dallo script'); throw new Error('auth'); }
+    if (!d.ok) throw new Error(d.error);
+    return d;
+  } finally { clearTimeout(tm); }
+}
+
+function showLogin(msg) { $('#login').hidden = false; $('#err').textContent = msg || ''; setTimeout(() => $('#pw').focus(), 200); }
+$('#loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const v = $('#pw').value;
+  let good = false; try { good = (await sha256(v)) === PW_HASH; } catch { $('#err').textContent = 'Apri la pagina dal link https'; return; }
+  if (!good) { $('#err').textContent = 'Password errata'; return; }
+  key = v; try { localStorage.setItem('pt4_key', v); } catch {}
+  $('#login').hidden = true; tick(true);
+});
+
+async function tick(full) {
+  try {
+    if (full || Date.now() - listAt > 5 * 60000) {
+      const l = await api({ action: 'list' });
+      total = (l.rows || []).filter(r => r.some(c => String(c).trim())).length;
+      if (l.name) $('#evName').textContent = l.name + ' · ingressi in tempo reale';
+      listAt = Date.now(); rev = '';
+    }
+    const s = await api({ action: 'sync', ops: [], rev });
+    if (s.rev) rev = s.rev;
+    if (!s.same) recs = s.recs || {};
+    ok = true; lastOk = Date.now();
+    render();
+  } catch (e) { console.error(e); ok = false; }
+  $('#live').className = 'live' + (ok ? '' : ' off');
+  $('#live').textContent = ok ? 'LIVE' : 'OFFLINE';
+}
+
+function render() {
+  const all = Object.values(recs);
+  const added = Object.keys(recs).filter(k => k.startsWith('add-')).length;
+  const tot = total + added;
+  const entered = all.filter(r => r.t), inside = entered.filter(r => !r.o).length, out = entered.length - inside;
+  const set = (id, v) => { $(id).textContent = v; };
+  set('#inside', inside); set('#entered', entered.length); set('#out', out);
+  set('#tot', tot); set('#wait', Math.max(0, tot - entered.length)); set('#pct', (tot ? Math.round(entered.length / tot * 100) : 0) + '%');
+  if (lastInside >= 0 && inside !== lastInside) { const b = $('#inside'); b.classList.add('bump'); setTimeout(() => b.classList.remove('bump'), 300); }
+  lastInside = inside;
+
+  if (CAP) {
+    const p = inside / CAP, lvl = p >= 1 ? 3 : p >= 0.9 ? 2 : p >= 0.75 ? 1 : 0;
+    $('#cap').hidden = false; $('#cap').className = 'cap l' + lvl;
+    set('#capTxt', `${inside} / ${CAP}`);
+    $('#capFill').style.width = Math.min(100, p * 100) + '%';
+    $('#capMsg').textContent = ['', '⚠️ Quasi al completo', `🟠 Ultimi posti: ne restano ${Math.max(0, CAP - inside)}`, '⛔ Capienza raggiunta'][lvl];
+  }
+
+  // ultimi movimenti
+  const moves = [];
+  all.forEach(r => (r.l || []).forEach(e => { if (e[1] !== 'x') moves.push({ t: e[0], ty: e[1], nm: r.nm || 'Partecipante' }); }));
+  moves.sort((a, b) => b.t - a.t);
+  const show = moves.filter(m => m.ty === 'i').slice(0, 4);
+  $('#recent').innerHTML = show.length
+    ? show.map(m => `<li><span>${SHOW_NAMES ? esc(m.nm) : '✓ Nuovo ingresso'}</span><time>${fmt(m.t)}</time></li>`).join('')
+    : '<li class="muted">Nessun ingresso ancora</li>';
+
+  // grafico
+  const buckets = {};
+  entered.forEach(r => { const d = new Date(r.t); const k = `${pad(d.getHours())}:${pad(Math.floor(d.getMinutes() / 15) * 15)}`; buckets[k] = (buckets[k] || 0) + 1; });
+  const keys = Object.keys(buckets).sort().slice(-24);
+  const max = keys.length ? Math.max(...keys.map(k => buckets[k])) : 1;
+  const peak = keys.reduce((b, k) => (!b || buckets[k] > buckets[b] ? k : b), null);
+  $('#chart').innerHTML = keys.length
+    ? keys.map(k => `<div class="c"><div class="b${k === peak ? ' p' : ''}" style="height:${Math.max(3, Math.round(buckets[k] / max * 100))}%"></div><span class="l">${k}</span></div>`).join('')
+    : '<p class="muted">Il grafico compare al primo ingresso.</p>';
+}
+
+setInterval(() => {
+  $('#clock').textContent = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  $('#upd').textContent = lastOk ? `Aggiornato alle ${new Date(lastOk).toLocaleTimeString('it-IT')}` : 'In attesa dei dati…';
+}, 1000);
+setInterval(() => { if (key && document.visibilityState === 'visible') tick(); }, 3000);
+$('#fs').addEventListener('click', () => { const d = document.documentElement; (d.requestFullscreen || d.webkitRequestFullscreen)?.call(d); });
+async function wake() { try { await navigator.wakeLock?.request('screen'); } catch {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { wake(); tick(); } });
+wake();
+if (key) tick(true); else showLogin();
+</script>
+</body>
+</html>
