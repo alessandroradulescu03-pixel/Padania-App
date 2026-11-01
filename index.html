@@ -2,246 +2,226 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#0a0a0a">
-<link rel="stylesheet" href="style.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://unpkg.com/html5-qrcode"></script>
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PadaniaTuning · Check-in</title>
+<meta name="theme-color" content="#0a0a0b">
 <link rel="manifest" href="./manifest.webmanifest">
-<meta name="theme-color" content="#0b0b0b">
-<link rel="apple-touch-icon" href="./assets/app-icon.png">
+<link rel="icon" type="image/png" href="./assets/icon-192.png">
+<link rel="apple-touch-icon" href="./assets/icon-180.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PT Check-in">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-<style>
-#pt-splash{
-  position:fixed; inset:0; z-index:99999;
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  background:#0b0b0b; color:#fff;
-  transition:opacity .35s ease, visibility .35s ease;
-}
-#pt-splash img{width:96px;height:96px;object-fit:contain;border-radius:22px;margin-bottom:22px}
-#pt-splash .pt-brand{font-weight:800;letter-spacing:2px;font-size:20px}
-#pt-splash .pt-sub{margin-top:7px;font-size:13px;opacity:.6}
-#pt-splash .pt-loader{
-  width:120px;height:3px;border-radius:10px;background:#2a2a2a;
-  margin-top:25px;overflow:hidden;
-}
-#pt-splash .pt-loader:after{
-  content:"";display:block;width:45%;height:100%;background:#fff;
-  animation:ptload 1s ease-in-out infinite;
-}
-@keyframes ptload{0%{transform:translateX(-120%)}100%{transform:translateX(300%)}}
-#pt-splash.pt-hide{opacity:0;visibility:hidden;pointer-events:none}
-</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
 </head>
 <body>
-<div id="pt-splash" aria-label="Caricamento app">
-  <img src="./assets/app-icon.png" alt="PadaniaTuning">
-  <div class="pt-brand">PADANIATUNING</div>
-  <div class="pt-sub">Caricamento app...</div>
-  <div class="pt-loader"></div>
+
+<!-- SPLASH -->
+<div id="splash">
+  <img src="./assets/logo.png" alt="">
+  <div class="splash-bar"><span></span></div>
 </div>
 
+<!-- LOGIN -->
+<div id="auth" class="overlay-full">
+  <form class="auth-card" id="authForm" autocomplete="off">
+    <img class="auth-logo" src="./assets/logo.png" alt="PadaniaTuning">
+    <div class="eyebrow">AREA STAFF</div>
+    <h1 class="display">Check-in evento</h1>
+    <p>Inserisci la password per accedere.</p>
+    <div class="pw-field">
+      <input type="password" id="authInput" placeholder="Password" autocomplete="current-password" enterkeyhint="go">
+      <button type="button" id="pwToggle" class="pw-toggle" aria-label="Mostra password">👁</button>
+    </div>
+    <button type="submit" class="btn btn-chrome btn-block">Accedi</button>
+    <div class="auth-error" id="authError"></div>
+  </form>
+</div>
 
-<div id="pt-auth">
-  <div class="pt-auth-card" id="pt-auth-card">
-    <div class="icon">🔒</div>
-    <h2>Accesso riservato staff</h2>
-    <p>Inserisci la password per accedere al sistema di check-in PadaniaTuning.</p>
-    <input type="password" id="pt-auth-input" placeholder="Password" autocomplete="off">
-    <button id="pt-auth-btn" type="button">Accedi</button>
-    <div class="pt-auth-error" id="pt-auth-error"></div>
+<div class="app">
+  <!-- HEADER -->
+  <header class="topbar">
+    <div class="brand">
+      <img src="./assets/logo.png" alt="">
+      <div>
+        <div class="brand-name">PADANIA TUNING</div>
+        <div class="brand-sub" id="listName">Nessuna lista</div>
+      </div>
+    </div>
+    <div class="counter-chip" id="counterChip"><b id="chipIn">0</b><span>/<i id="chipTot">0</i></span></div>
+  </header>
+
+  <!-- ===== PAGINA CHECK-IN ===== -->
+  <main id="page-checkin" class="page">
+
+    <!-- Stato vuoto -->
+    <section class="welcome" id="welcome">
+      <div class="welcome-art">🏁</div>
+      <h2 class="display">Pronti a partire</h2>
+      <p>Carica la lista iscritti esportata dal sito (Excel o CSV) per iniziare il check-in.</p>
+      <label for="fileInput" class="btn btn-chrome btn-lg">📥 Carica lista iscritti</label>
+      <button class="btn btn-ghost" data-action="restore">♻️ Ripristina un backup</button>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="dash" hidden>
+      <div class="progress-card">
+        <div class="progress-top">
+          <div>
+            <div class="eyebrow">INGRESSI</div>
+            <div class="big-count"><span id="countIn">0</span><small>/ <span id="countTot">0</span></small></div>
+          </div>
+          <div class="ring" id="ring" style="--p:0"><span id="countPct">0%</span></div>
+        </div>
+        <div class="bar"><div id="barFill"></div></div>
+        <div class="progress-foot">
+          <span><i class="dot dot-ok"></i><b id="countIn2">0</b> entrati</span>
+          <span><i class="dot dot-wait"></i><b id="countWait">0</b> in attesa</span>
+          <button class="undo-btn" id="undoBtn" hidden>↩ Annulla ultimo</button>
+        </div>
+      </div>
+
+      <div class="actions-row">
+        <button class="btn btn-chrome btn-lg scan-btn" id="scanBtn">
+          <span class="scan-ico">⌗</span> Scansiona QR
+        </button>
+        <button class="btn btn-square" id="addBtn" title="Aggiungi partecipante" aria-label="Aggiungi partecipante">＋</button>
+      </div>
+
+      <div class="sticky-tools" id="stickyTools">
+        <div class="search">
+          <span class="search-ico">⌕</span>
+          <input type="search" id="searchInput" placeholder="Cerca nome, cognome, targa…" autocomplete="off" enterkeyhint="search">
+          <button class="search-clear" id="searchClear" hidden aria-label="Cancella">✕</button>
+        </div>
+        <div class="segmented" role="tablist">
+          <button class="seg active" data-filter="all">Tutti <em id="fAll">0</em></button>
+          <button class="seg" data-filter="no">In attesa <em id="fNo">0</em></button>
+          <button class="seg" data-filter="yes">Entrati <em id="fYes">0</em></button>
+        </div>
+      </div>
+
+      <div class="list-meta">
+        <span id="resultInfo"></span>
+        <button class="sort-btn" id="sortBtn">Ordina: <b id="sortLabel">Lista</b></button>
+      </div>
+
+      <ul class="people" id="people"></ul>
+      <button class="btn btn-ghost btn-block" id="moreBtn" hidden>Mostra altri</button>
+    </section>
+  </main>
+
+  <!-- ===== PAGINA STATISTICHE ===== -->
+  <main id="page-stats" class="page" hidden>
+    <h2 class="page-title display">Statistiche</h2>
+    <div class="stat-grid">
+      <div class="stat"><span>Totale</span><b id="sTot">0</b></div>
+      <div class="stat ok"><span>Entrati</span><b id="sIn">0</b></div>
+      <div class="stat wait"><span>In attesa</span><b id="sWait">0</b></div>
+      <div class="stat"><span>% ingressi</span><b id="sPct">0%</b></div>
+      <div class="stat"><span>Primo ingresso</span><b id="sFirst">—</b></div>
+      <div class="stat"><span>Ultimo ingresso</span><b id="sLast">—</b></div>
+      <div class="stat"><span>Fascia di punta</span><b id="sPeak" class="sm">—</b></div>
+      <div class="stat"><span>Ritmo medio</span><b id="sRate" class="sm">—</b></div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">INGRESSI OGNI 15 MINUTI</div>
+      <div class="chart" id="chart"></div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">ULTIMI INGRESSI</div>
+      <ul class="recent" id="recent"></ul>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><span>Con nota</span><b id="sNotes">0</b></div>
+      <div class="stat"><span>Aggiunti in loco</span><b id="sAdded">0</b></div>
+    </div>
+  </main>
+
+  <!-- ===== PAGINA STRUMENTI ===== -->
+  <main id="page-tools" class="page" hidden>
+    <h2 class="page-title display">Strumenti</h2>
+
+    <div class="group-label">Lista</div>
+    <div class="menu">
+      <label for="fileInput" class="menu-item"><span class="mi-ico">📥</span><span><b>Carica / aggiorna lista</b><small>I check-in già fatti restano salvati</small></span></label>
+      <button class="menu-item" data-action="export"><span class="mi-ico">📊</span><span><b>Esporta Excel</b><small>Report con orari, stato e note</small></span></button>
+      <button class="menu-item" data-action="exportWaiting"><span class="mi-ico">⏳</span><span><b>Esporta solo assenti</b><small>Chi non si è ancora presentato</small></span></button>
+    </div>
+
+    <div class="group-label">Sicurezza dati</div>
+    <div class="menu">
+      <button class="menu-item" data-action="backup"><span class="mi-ico">💾</span><span><b>Salva backup</b><small>File con lista, check-in e note</small></span></button>
+      <button class="menu-item" data-action="restore"><span class="mi-ico">♻️</span><span><b>Ripristina backup</b><small>Ricarica un file di backup .json</small></span></button>
+      <div class="menu-item static"><span class="mi-ico">🔆</span><span><b>Schermo sempre acceso</b><small>Evita lo standby durante l'evento</small></span>
+        <label class="switch"><input type="checkbox" id="wakeToggle" checked><i></i></label></div>
+      <div class="menu-item static"><span class="mi-ico">🔊</span><span><b>Suono e vibrazione</b><small>Feedback quando scansioni</small></span>
+        <label class="switch"><input type="checkbox" id="soundToggle" checked><i></i></label></div>
+    </div>
+
+    <div class="group-label">Zona pericolosa</div>
+    <div class="menu">
+      <button class="menu-item danger" data-action="resetCheckins"><span class="mi-ico">🔄</span><span><b>Azzera check-in</b><small>Tiene la lista, cancella ingressi e note</small></span></button>
+      <button class="menu-item danger" data-action="clearAll"><span class="mi-ico">🗑</span><span><b>Cancella tutto</b><small>Rimuove lista e dati da questo telefono</small></span></button>
+      <button class="menu-item" data-action="logout"><span class="mi-ico">🔒</span><span><b>Blocca app</b><small>Richiede di nuovo la password</small></span></button>
+    </div>
+
+    <details class="guide">
+      <summary>📖 Come funziona</summary>
+      <ol>
+        <li><b>Carica la lista</b> Excel o CSV esportata dal sito. La prima riga deve contenere le intestazioni (es. Nome, Cognome…).</li>
+        <li><b>Cerca</b> per nome, cognome, targa o iniziali (es. “mr” → Mario Rossi).</li>
+        <li><b>Tocca il pulsante ✓</b> sulla persona per registrare l'ingresso: l'orario viene salvato.</li>
+        <li><b>Scansiona QR</b>: lo scanner resta aperto, puoi far passare più persone di fila.</li>
+        <li><b>＋</b> aggiunge chi si iscrive sul posto.</li>
+        <li>Tutto resta salvato sul telefono anche se chiudi l'app. Fai comunque un <b>backup</b> ogni tanto.</li>
+        <li>A fine evento <b>esporta l'Excel</b> con orari e note.</li>
+      </ol>
+    </details>
+    <p class="version">PadaniaTuning Check-in · v3</p>
+  </main>
+</div>
+
+<!-- TAB BAR -->
+<nav class="tabbar">
+  <button class="tab active" data-page="checkin"><span>✓</span>Check-in</button>
+  <button class="tab" data-page="stats"><span>▥</span>Statistiche</button>
+  <button class="tab" data-page="tools"><span>⚙︎</span>Strumenti</button>
+</nav>
+
+<!-- SCANNER -->
+<div id="scanner" class="overlay-full scanner" hidden>
+  <div class="scan-head">
+    <div><div class="eyebrow">SCANNER</div><b class="display">Inquadra il QR</b></div>
+    <button class="icon-btn" id="scanClose" aria-label="Chiudi">✕</button>
+  </div>
+  <div class="scan-view"><div id="reader"></div><div class="scan-frame"></div></div>
+  <div class="scan-result" id="scanResult"><span>In attesa di un codice…</span></div>
+  <div class="scan-count"><b id="scanIn">0</b> / <span id="scanTot">0</span> entrati</div>
+</div>
+
+<!-- MODALE -->
+<div id="modal" class="modal" hidden>
+  <div class="sheet">
+    <h3 id="mTitle"></h3>
+    <p id="mText"></p>
+    <div id="mBody"></div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" id="mCancel">Annulla</button>
+      <button class="btn btn-chrome" id="mOk">OK</button>
+    </div>
   </div>
 </div>
 
-<div class="app-shell">
-  <header class="header">
-    <div class="brand">
-      <div class="brand-mark">🏁</div>
-      <div><h1>PadaniaTuning</h1><span>SISTEMA CHECK-IN</span></div>
-    </div>
-    <button class="help-top" id="helpBtn" type="button">?</button>
-  </header>
+<input type="file" id="fileInput" accept=".csv,.xlsx,.xls" hidden>
+<input type="file" id="restoreInput" accept=".json,application/json" hidden>
+<div id="toast" role="status"></div>
 
-  <nav class="top-nav" aria-label="Navigazione">
-    <button class="nav-item active" id="checkinTab" type="button">✓ Check-in</button>
-    <button class="nav-item" id="statsTab" type="button">📊 Statistiche</button>
-    <button class="nav-item" id="helpTab" type="button">☰ Come funziona</button>
-  </nav>
-
-  <main id="checkinPage">
-    <section class="hero-card">
-      <div>
-        <div class="eyebrow">CONTROLLO INGRESSI</div>
-        <h2>Gestisci gli ingressi<br>in pochi secondi.</h2>
-        <p>Carica la lista, cerca il partecipante oppure usa il QR. Un tap sulla riga registra l'ingresso.</p>
-      </div>
-      <div class="hero-badge">LIVE</div>
-    </section>
-
-    <section class="quick-actions">
-      <label for="fileInput" class="action-card primary-action">
-        <span class="action-icon">📥</span>
-        <span><strong>Carica lista</strong><small>Excel / CSV</small></span>
-      </label>
-      <input type="file" id="fileInput" accept=".csv,.xlsx">
-      <button class="action-card" id="qrBtn" type="button">
-        <span class="action-icon">📷</span>
-        <span><strong>Scansiona QR</strong><small>Ingresso rapido</small></span>
-      </button>
-    </section>
-
-    <section class="search-card">
-      <div class="section-label">RICERCA PARTECIPANTE</div>
-      <div class="search-row">
-        <span class="search-icon">⌕</span>
-        <input type="text" id="searchInput" placeholder="Nome, cognome o iniziali…" autocomplete="off">
-        <kbd>⌘K</kbd>
-      </div>
-    </section>
-
-    <div id="reader"></div>
-
-    <section class="stats-box">
-      <div class="stats-heading">
-        <div>
-          <div class="section-label">AVANZAMENTO</div>
-          <div id="statusCounter">Entrati: 0 / 0</div>
-        </div>
-        <div class="stats-actions">
-          <button class="btn-sm undo" id="undoBtn" style="display:none">↩ Annulla</button>
-          <button class="btn-sm danger" id="resetBtn">Reset</button>
-        </div>
-      </div>
-      <div class="progress-meta"><span>Ingressi registrati</span><span id="progressPercent">0%</span></div>
-      <div class="progress-track"><div id="progressBar"></div></div>
-    </section>
-
-    <section class="list-toolbar">
-      <div class="section-label">LISTA PARTECIPANTI</div>
-      <div class="filter-pills">
-        <button class="pill active-all" data-filter="all">Tutti</button>
-        <button class="pill" data-filter="yes">✓ Entrati</button>
-        <button class="pill" data-filter="no">◷ In attesa</button>
-      </div>
-    </section>
-
-    <section class="table-container">
-      <table id="table">
-        <tbody><tr><td colspan="1" style="border:none">
-          <div class="empty-state">
-            <div class="icon">📋</div>
-            <h3>Nessuna lista caricata</h3>
-            <p>Carica un file Excel o CSV per iniziare a gestire gli ingressi.</p>
-          </div>
-        </td></tr></tbody>
-      </table>
-    </section>
-
-    <div class="pagination" id="pagination" style="display:none">
-      <button id="pgPrev" type="button">‹ Prec</button>
-      <span class="pg-info" id="pgInfo">Pagina 1 di 1</span>
-      <button id="pgNext" type="button">Succ ›</button>
-    </div>
-
-    <section class="bottom-actions">
-      <button class="btn secondary" id="saveBtn">💾 Backup JSON</button>
-      <button class="btn export" id="exportBtn">📤 Esporta Excel</button>
-    </section>
-  </main>
-
-  <main id="statsPage" hidden>
-    <section class="hero-card">
-      <div>
-        <div class="eyebrow">REPORT LIVE</div>
-        <h2>Statistiche<br>ingressi evento.</h2>
-        <p>Aggiornate in automatico quando apri questa pagina, o premi Aggiorna.</p>
-      </div>
-      <div class="hero-badge">LIVE</div>
-    </section>
-
-    <div class="stats-refresh"><button id="statsRefreshBtn" type="button">🔄 Aggiorna</button></div>
-
-    <div class="stat-grid">
-      <div class="stat-card"><div class="stat-label">Totale partecipanti</div><div class="stat-value" id="statTotal">0</div></div>
-      <div class="stat-card"><div class="stat-label">Entrati</div><div class="stat-value green" id="statEntrati">0</div></div>
-      <div class="stat-card"><div class="stat-label">In attesa</div><div class="stat-value orange" id="statAttesa">0</div></div>
-      <div class="stat-card"><div class="stat-label">% Ingressi</div><div class="stat-value blue" id="statPercent">0%</div></div>
-      <div class="stat-card"><div class="stat-label">Primo ingresso</div><div class="stat-value" id="statPrimo">—</div></div>
-      <div class="stat-card"><div class="stat-label">Ultimo ingresso</div><div class="stat-value" id="statUltimo">—</div></div>
-      <div class="stat-card"><div class="stat-label">Fascia di punta</div><div class="stat-value" id="statPicco" style="font-size:15px">—</div></div>
-      <div class="stat-card"><div class="stat-label">Ritmo medio</div><div class="stat-value" id="statRitmo" style="font-size:15px">—</div></div>
-    </div>
-
-    <div class="chart-card">
-      <div class="section-label">INGRESSI PER FASCIA ORARIA (15 min)</div>
-      <div class="bar-chart" id="barChart"></div>
-    </div>
-
-    <div class="stat-card">
-      <div class="stat-label">Partecipanti con nota</div>
-      <div class="stat-value" id="statNote">0</div>
-    </div>
-  </main>
-
-  <main id="helpPage" hidden>
-    <section class="help-hero">
-      <div class="hero-badge">GUIDA</div>
-      <h2>Come funziona l'app</h2>
-      <p>Tutto quello che serve per gestire il check-in durante l'evento, senza perdere tempo.</p>
-    </section>
-
-    <section class="feature-grid">
-      <article class="feature"><span>📥</span><div><h3>1. Carica la lista</h3><p>Importa un file <strong>Excel (.xlsx)</strong> o <strong>CSV</strong>. La prima riga viene usata come intestazione.</p></div></article>
-      <article class="feature"><span>🔎</span><div><h3>2. Cerca al volo</h3><p>Scrivi nome o cognome. Puoi anche usare le <strong>iniziali</strong>, ad esempio “mr” per Mario Rossi.</p></div></article>
-      <article class="feature"><span>📷</span><div><h3>3. Usa il QR</h3><p>Apri lo scanner e inquadra il codice. Se trova il partecipante nella lista, lo registra immediatamente.</p></div></article>
-      <article class="feature"><span>✓</span><div><h3>4. Check-in con un tap</h3><p>Tocca una riga oppure la casella <strong>Entrato</strong>. L'orario viene salvato automaticamente.</p></div></article>
-      <article class="feature"><span>↩</span><div><h3>5. Annulla l'ultimo</h3><p>Hai registrato la persona sbagliata? Usa <strong>Annulla</strong> per tornare indietro sull'ultima operazione.</p></div></article>
-      <article class="feature"><span>📊</span><div><h3>6. Filtra la lista</h3><p>Passa tra <strong>Tutti</strong>, <strong>Entrati</strong> e <strong>In attesa</strong> per trovare subito ciò che ti serve.</p></div></article>
-      <article class="feature"><span>💾</span><div><h3>7. Backup</h3><p>Il pulsante Backup JSON salva lo stato degli ingressi e gli orari. L'app esegue anche un autosalvataggio ogni 10 minuti.</p></div></article>
-      <article class="feature"><span>📤</span><div><h3>8. Esporta il report</h3><p>Esporta un Excel finale con tutti i partecipanti, l'orario di ingresso e lo stato <strong>SI/NO</strong>.</p></div></article>
-      <article class="feature"><span>↕️</span><div><h3>9. Ordina la lista</h3><p>Tocca l'intestazione di una colonna (anche Ora o Entrato) per ordinare. Un secondo tocco inverte l'ordine.</p></div></article>
-      <article class="feature"><span>📝</span><div><h3>10. Note per partecipante</h3><p>Scrivi una nota veloce accanto a ogni riga (es. "pagamento da verificare"). Viene salvata ed esportata nel report.</p></div></article>
-      <article class="feature"><span>📊</span><div><h3>11. Statistiche</h3><p>Nella tab <strong>Statistiche</strong> trovi entrati/attesa, orario di picco, ritmo ingressi e grafico per fascia oraria.</p></div></article>
-      <article class="feature"><span>🔒</span><div><h3>12. Accesso protetto</h3><p>L'app chiede una password all'avvio. Viene richiesta di nuovo ogni volta che chiudi completamente l'app.</p></div></article>
-    </section>
-
-    <section class="tips-card">
-      <div class="section-label">CHICCHE UTILI</div>
-      <ul>
-        <li><strong>Riga intera cliccabile:</strong> non devi centrare la casella.</li>
-        <li><strong>Ricerca istantanea:</strong> la lista si aggiorna mentre scrivi.</li>
-        <li><strong>Orario automatico:</strong> quando fai check-in viene memorizzata l'ora.</li>
-        <li><strong>Indicatore live:</strong> la barra mostra subito l'avanzamento degli ingressi.</li>
-        <li><strong>Funziona da telefono:</strong> interfaccia pensata prima di tutto per il touch.</li>
-      </ul>
-    </section>
-
-    <section class="workflow">
-      <div class="section-label">WORKFLOW CONSIGLIATO</div>
-      <div class="steps"><span>1</span><b>Carica lista</b><i>→</i><span>2</span><b>Cerca / QR</b><i>→</i><span>3</span><b>Check-in</b><i>→</i><span>4</span><b>Esporta</b></div>
-    </section>
-  </main>
-</div>
-
-<div id="toast"></div>
-<script src="script.js"></script>
-<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js");}</script>
-
-<script>
-(function(){
-  function hideSplash(){
-    var s=document.getElementById('pt-splash');
-    if(!s)return;
-    s.classList.add('pt-hide');
-    setTimeout(function(){ if(s.parentNode) s.parentNode.removeChild(s); }, 450);
-  }
-  if(document.readyState === 'complete') setTimeout(hideSplash, 500);
-  else window.addEventListener('load', function(){ setTimeout(hideSplash, 500); });
-})();
-</script>
+<script src="script.js" defer></script>
 </body>
 </html>
