@@ -1,7 +1,7 @@
 /* Service worker PadaniaTuning Check-in · v3
    - File dell'app: prima la rete, saltando la cache di GitHub Pages (così vedi subito l'ultima versione), cache se offline
    - Librerie e font: prima la cache (non cambiano), così funziona anche senza campo */
-const CACHE = 'pt-checkin-v4-4';
+const CACHE = 'pt-checkin-v4-5';
 
 const CORE = [
   './', './index.html', './schermo.html', './style.css', './script.js', './manifest.webmanifest',

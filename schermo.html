@@ -288,7 +288,7 @@ const CAP = +params.get('cap') || +settings.capacity || 0;
 const SHOW_NAMES = params.get('nomi') !== '0';
 let key = ''; try { key = localStorage.getItem('pt4_key') || ''; } catch {}
 let chartSig = '', gaugeSig = '';
-let recs = {}, names = {}, subs = {}, total = 0, listAt = 0, rev = '', lastInside = -1, ok = false, lastOk = 0;
+let recs = {}, names = {}, subs = {}, total = 0, nonSel = new Set(), listAt = 0, rev = '', lastInside = -1, ok = false, lastOk = 0;
 
 const pad = n => String(n).padStart(2, '0');
 const fmt = t => new Date(t).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
@@ -314,21 +314,24 @@ function columns(headers) {
     k = [...new Set([nome, cognome, find(/^e-?mail/), find(/(telefono|cellulare|phone)/), find(/^targa ?1?$/)].filter(i => i >= 0))];
     if (k.length < 2) k = headers.map((_, i) => i).filter(i => i !== cat);
   }
-  return { nome, cognome, key: k, veh: find(/^veicolo ?1?$/) };
+  return { nome, cognome, cat, key: k, veh: find(/^veicolo ?1?$/) };
 }
 function indexList(headers, raw) {
   headers = headers.map(x => String(x ?? '').trim());
   const width = Math.max(headers.length, ...raw.map(r => r.length));
   while (headers.length < width) headers.push('Colonna ' + (headers.length + 1));
   const cols = columns(headers), seen = {};
-  names = {}; subs = {}; total = 0;
+  names = {}; subs = {}; total = 0; nonSel = new Set();
+  // come nell'app: se nel Foglio c'è almeno un "Selezionato", si contano solo i selezionati
+  const isSel = c => cols.cat >= 0 && /(selezionat|confermat|approvat|accettat|vip|staff|ok|^si$)/.test(norm(c[cols.cat])) && !/(non selezionat|scartat|rifiutat|annullat)/.test(norm(c[cols.cat]));
+  const useSel = raw.some(r => isSel(headers.map((_, j) => String(r[j] ?? '').trim())));
   raw.forEach(r => {
     const c = headers.map((_, j) => String(r[j] ?? '').trim());
     if (!c.some(Boolean)) return;
-    total++;
     let k = 'p' + hash(cols.key.map(i => compact(c[i])).join('␟'));
     seen[k] = (seen[k] || 0) + 1;
     if (seen[k] > 1) k += '-' + seen[k];
+    if (!useSel || isSel(c)) total++; else nonSel.add(k);
     names[k] = [c[cols.nome], cols.cognome >= 0 ? c[cols.cognome] : ''].join(' ').trim();
     if (cols.veh >= 0) subs[k] = c[cols.veh];
   });
@@ -393,8 +396,8 @@ function countTo(el, to, suffix = '') {
 function render() {
   const keys = Object.keys(recs);
   const added = keys.filter(k => k.startsWith('add-')).length;
-  const tot = total + added;
   const entered = keys.filter(k => recs[k].t), inside = entered.filter(k => !recs[k].o).length, out = entered.length - inside;
+  const tot = total + added + entered.filter(k => nonSel.has(k)).length;   // un non selezionato fatto entrare comunque conta
   const pct = tot ? Math.round(entered.length / tot * 100) : 0;
   countTo($('#inside'), inside); countTo($('#entered'), entered.length); countTo($('#out'), out);
   countTo($('#tot'), tot); countTo($('#wait'), Math.max(0, tot - entered.length)); countTo($('#pct'), pct, '%');

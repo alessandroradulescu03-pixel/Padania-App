@@ -35,7 +35,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 let list = null;          // { name, source, loadedAt, headers, rows:[{k,c,added}] }
 let recs = {};
 let queue = {};
-let settings = { wake: true, sound: true, big: false, sync: false, url: DEFAULT_SCRIPT_URL, device: '', capacity: 0 };
+let settings = { wake: true, sound: true, big: false, sync: false, url: DEFAULT_SCRIPT_URL, device: '', capacity: 0, onlySel: true };
 let cols = { nome: 0, cognome: -1, info: [], cat: -1, key: [] };
 let dups = {};            // k -> motivo
 let dupGroups = [];
@@ -156,7 +156,7 @@ function initials(name) { const w = name.split(/\s+/).filter(Boolean); return ((
 function catClass(v) {
   const n = norm(v);
   if (!n) return '';
-  if (/(scartat|rifiutat|annullat|bloccat|^no$)/.test(n)) return 'bad';
+  if (/(non selezionat|scartat|rifiutat|annullat|bloccat|^no$)/.test(n)) return 'bad';
   if (/(valutare|attesa|pending|sospes)/.test(n)) return 'warn';
   if (/(selezionat|confermat|approvat|accettat|vip|staff|ok|^si$)/.test(n)) return 'good';
   return '';
@@ -506,8 +506,28 @@ function renderOnline() {
 /* =====================================================
    RENDER
    ===================================================== */
+/* ─── SELEZIONE ───
+   Si scaricano tutti gli iscritti, ma di default si vedono e si contano solo i "Selezionati".
+   Restano sempre visibili anche chi è registrato in loco e chi è già entrato.
+   Se nel Foglio nessuno è ancora "Selezionato", il filtro non si attiva (si vedono tutti). */
+function selAvailable() { return !!(list && cols && cols.cat >= 0 && list.rows.some(r => catClass(r._cat) === 'good')); }
+function selActive() { return !!settings.onlySel && selAvailable(); }
+function inSel(r, active = selActive()) { return !active || catClass(r._cat) === 'good' || r.added || everIn(r.k); }
+function renderSelBtn() {
+  const b = $('#selBtn');
+  if (!b) return;
+  const avail = selAvailable();
+  b.hidden = !avail;
+  if (!avail) return;
+  const on = !!settings.onlySel;
+  const hiddenN = list.rows.filter(r => !inSel(r, true)).length;
+  b.classList.toggle('on', on);
+  b.innerHTML = on ? `✅ Solo selezionati${hiddenN ? ` <em>· ${hiddenN} nascosti</em>` : ''}` : `👥 Tutti gli iscritti`;
+}
+
 function counts() {
-  const rows = list ? list.rows : [];
+  const act = selActive();
+  const rows = list ? list.rows.filter(r => inSel(r, act)) : [];
   const tot = rows.length;
   let inN = 0, inside = 0, out = 0;
   rows.forEach(r => { if (everIn(r.k)) { inN++; isInside(r.k) ? inside++ : out++; } });
@@ -588,7 +608,9 @@ function matches(r, q, tokens) {
 function filteredRows() {
   const q = norm($('#searchInput').value);
   const tokens = q.split(' ').filter(Boolean);
+  const act = selActive();
   let rows = list.rows.filter(r => {
+    if (!q && !inSel(r, act)) return false;   // cercando si trovano anche i non selezionati (con avviso all'ingresso)
     if (filter === 'yes' && !everIn(r.k)) return false;
     if (filter === 'no' && everIn(r.k)) return false;
     return matches(r, q, tokens);
@@ -650,6 +672,7 @@ function renderList() {
   $('#moreBtn').hidden = rows.length <= shown;
   $('#moreBtn').textContent = `Mostra altri (${rows.length - shown})`;
   $('#resultInfo').textContent = `${rows.length} ${rows.length === 1 ? 'persona' : 'persone'}`;
+  renderSelBtn();
 }
 /* aggiornamento dalla sincronizzazione: non disturba se c'è una finestra aperta */
 function renderListSoft() { if (!$('#dash').hidden && $('#modal').hidden) renderList(); else if ($('#modal').hidden) renderAll(); }
@@ -845,6 +868,11 @@ $$('.seg').forEach(b => b.addEventListener('click', () => {
   shown = PAGE; renderList();
 }));
 $('#moreBtn').addEventListener('click', () => { shown += PAGE; renderList(); });
+$('#selBtn').addEventListener('click', () => {
+  settings.onlySel = !settings.onlySel; saveSettings();
+  shown = PAGE; renderCounts(); renderList();
+  toast(settings.onlySel ? '✅ Mostro solo i selezionati' : '👥 Mostro tutti gli iscritti');
+});
 
 $('#sortBtn').addEventListener('click', async () => {
   const opts = [{ id: 'list', label: 'Ordine lista' }, { id: 'az', label: 'Cognome A→Z' }, { id: 'recent', label: 'Ultimi movimenti' }];
