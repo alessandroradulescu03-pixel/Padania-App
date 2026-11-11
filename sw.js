@@ -1,10 +1,10 @@
 /* Service worker PadaniaTuning Check-in · v3
    - File dell'app: prima la rete, saltando la cache di GitHub Pages (così vedi subito l'ultima versione), cache se offline
    - Librerie e font: prima la cache (non cambiano), così funziona anche senza campo */
-const CACHE = 'pt-checkin-v4-5';
+const CACHE = 'pt-checkin-v4-7';
 
 const CORE = [
-  './', './index.html', './schermo.html', './style.css', './script.js', './manifest.webmanifest',
+  './', './index.html', './schermo.html', './style.css', './script.js', './natale.css', './natale.js', './manifest.webmanifest',
   './assets/logo.png', './assets/icon-192.png', './assets/icon-180.png',
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',

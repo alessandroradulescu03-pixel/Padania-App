@@ -22,7 +22,7 @@ const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbweHwQuH_P4c
 
 const K_LIST = 'pt4_list', K_RECS = 'pt4_recs', K_QUEUE = 'pt4_queue', K_SET = 'pt4_settings', K_KEY = 'pt4_key';
 /* Versione dell'app: AUMENTALA a ogni modifica, così i telefoni si accorgono dell'aggiornamento */
-const APP_VERSION = '4.6';
+const APP_VERSION = '4.7';
 const PAGE = 60;
 const SYNC_EVERY = 2500;          // ogni 2,5 s chiede "è cambiato qualcosa?" (risposta leggerissima)
 
